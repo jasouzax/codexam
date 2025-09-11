@@ -96,6 +96,8 @@ interface Participant {
   totalAchieveTime: Date | null;
 }
 
+const totalPossible = challenges.reduce((sum, ch) => sum + ch.testcases.reduce((s, tc) => s + tc.points, 0), 0);
+
 const participants = new Map<string, Participant>();
 const connections = new Map<WebSocket, string>(); // ws to name
 const pending: { name: string; lang: string; ws: WebSocket }[] = [];
@@ -105,6 +107,15 @@ function processNextPending() {
   if (currentPending || pending.length === 0) return;
   currentPending = pending.shift()!;
   console.log(`New application: ${currentPending.name} (${currentPending.lang}). Accept? (y/n)`);
+}
+
+function resetScores() {
+  for (const p of participants.values()) {
+    p.problemScores = challenges.map(() => ({ maxScore: 0, currentScore: 0, achieveTime: null }));
+    p.totalMax = 0;
+    p.totalCurrent = 0;
+    p.totalAchieveTime = null;
+  }
 }
 
 async function cliInput() {
@@ -139,7 +150,8 @@ async function cliInput() {
     } else {
       const parts = trimmed.split(/\s+/);
       const cmd = parts[0];
-      if (cmd === 'start' && phase === 'registration') {
+      const now = new Date();
+      if (cmd === 'start') {
         let targetTime: Date | null = null;
         if (parts.length > 1) {
           targetTime = parseTime(parts[1]);
@@ -147,18 +159,32 @@ async function cliInput() {
             console.log('Invalid time format. Use HH:MM');
             continue;
           }
-          if (targetTime < new Date()) {
-            console.log('Scheduled time is in the past.');
-            continue;
+        } else {
+          targetTime = now;
+        }
+        if (phase === 'registration') {
+          if (targetTime <= now) {
+            startCompetition();
+          } else {
+            scheduledStart = targetTime;
+            broadcastTime();
+            console.log(`Competition scheduled to start at ${targetTime.toLocaleTimeString()}.`);
+          }
+        } else if (phase === 'ongoing') {
+          if (targetTime > now) {
+            phase = 'registration';
+            scheduledStart = targetTime;
+            startTime = null;
+            endTime = null;
+            resetScores();
+            broadcast({ type: 'phase', phase });
+            broadcastTime();
+            console.log(`Competition rescheduled to start at ${targetTime.toLocaleTimeString()}. Scores reset.`);
+          } else {
+            console.log('Cannot reschedule to past or present during ongoing.');
           }
         }
-        if (targetTime) {
-          scheduledStart = targetTime;
-          console.log(`Competition scheduled to start at ${targetTime.toLocaleTimeString()}.`);
-        } else {
-          startCompetition();
-        }
-      } else if (cmd === 'end' && phase === 'ongoing') {
+      } else if (cmd === 'end' && (phase === 'registration' || phase === 'ongoing')) {
         let targetTime: Date | null = null;
         if (parts.length > 1) {
           targetTime = parseTime(parts[1]);
@@ -166,17 +192,20 @@ async function cliInput() {
             console.log('Invalid time format. Use HH:MM');
             continue;
           }
-          if (targetTime < new Date()) {
-            console.log('Scheduled time is in the past.');
-            continue;
-          }
-        }
-        if (targetTime) {
-          scheduledEnd = targetTime;
-          endTime = targetTime;
-          console.log(`Competition scheduled to end at ${targetTime.toLocaleTimeString()}.`);
         } else {
+          targetTime = now;
+        }
+        if (targetTime <= now) {
           endCompetition();
+        } else {
+          if (phase === 'registration') {
+            scheduledEnd = targetTime;
+            console.log(`End scheduled at ${targetTime.toLocaleTimeString()}.`);
+          } else {
+            endTime = targetTime;
+            broadcastTime();
+            console.log(`End time updated to ${targetTime.toLocaleTimeString()}.`);
+          }
         }
       } else {
         console.log('Unknown command or invalid phase.');
@@ -197,12 +226,19 @@ function startCompetition() {
   phase = 'ongoing';
   startTime = new Date();
   endTime = new Date(startTime.getTime() + duration);
-  broadcast({ type: 'phase', phase, startTime: startTime.getTime(), duration });
+  if (scheduledEnd && scheduledEnd > startTime) {
+    endTime = scheduledEnd;
+  }
+  scheduledStart = null;
+  scheduledEnd = null;
+  broadcast({ type: 'phase', phase });
+  broadcastTime();
   console.log('Competition started.');
 }
 
 function endCompetition() {
   phase = 'ended';
+  scheduledEnd = null;
   broadcast({ type: 'phase', phase });
   console.log('Competition ended.');
 }
@@ -214,11 +250,19 @@ function broadcast(msg: object) {
   }
 }
 
+function broadcastTime() {
+  broadcast({
+    type: 'time_update',
+    startTime: startTime?.getTime() ?? null,
+    endTime: endTime?.getTime() ?? null,
+    scheduledStart: scheduledStart?.getTime() ?? null,
+  });
+}
+
 setInterval(() => {
   const now = new Date();
   if (scheduledStart && now >= scheduledStart) {
     startCompetition();
-    scheduledStart = null;
   }
   if (phase === 'ongoing' && endTime && now > endTime) {
     endCompetition();
@@ -226,7 +270,7 @@ setInterval(() => {
 }, 1000);
 
 async function runCode(lang: string, code: string, input: string): Promise<{ output: string; error?: string }> {
-    let output = '';
+  let output = '';
   let error = '';
   let tempDir = '';
   try {
@@ -238,12 +282,13 @@ async function runCode(lang: string, code: string, input: string): Promise<{ out
     let file: string;
 
     switch (lang) {
-      case 'Python':
+      case 'Python': {
         file = `${tempDir}/main.py`;
         await Deno.writeTextFile(file, code);
         cmd = ['python', file];
         break;
-      case 'Java':
+      }
+      case 'Java': {
         file = `${tempDir}/Main.java`;
         await Deno.writeTextFile(file, code);
         const javacCmd = new Deno.Command('javac', { args: ['Main.java'], cwd: tempDir, stderr: 'piped' });
@@ -255,7 +300,8 @@ async function runCode(lang: string, code: string, input: string): Promise<{ out
         }
         cmd = ['java', '-cp', tempDir, 'Main'];
         break;
-      case 'C++':
+      }
+      case 'C++': {
         file = `${tempDir}/main.cpp`;
         await Deno.writeTextFile(file, code);
         const gppCmd = new Deno.Command('g++', { args: ['main.cpp', '-o', 'main'], cwd: tempDir, stderr: 'piped' });
@@ -267,7 +313,8 @@ async function runCode(lang: string, code: string, input: string): Promise<{ out
         }
         cmd = [`${tempDir}/main`];
         break;
-      case 'C':
+      }
+      case 'C': {
         file = `${tempDir}/main.c`;
         await Deno.writeTextFile(file, code);
         const gccCmd = new Deno.Command('gcc', { args: ['main.c', '-o', 'main'], cwd: tempDir, stderr: 'piped' });
@@ -279,19 +326,21 @@ async function runCode(lang: string, code: string, input: string): Promise<{ out
         }
         cmd = [`${tempDir}/main`];
         break;
-      default:
+      }
+      default: {
         error = 'Unsupported language';
         return { output, error };
+      }
     }
 
     const procCmd = new Deno.Command(cmd[0], { args: cmd.slice(1), cwd: tempDir, stdin: 'piped', stdout: 'piped', stderr: 'piped' });
     const proc = procCmd.spawn();
 
-    await proc.stdin.write(encoder.encode(input));
-    proc.stdin.close();
+    const writer = proc.stdin.getWriter();
+    await writer.write(encoder.encode(input));
+    await writer.close();
 
     const procOut = await proc.output();
-    console.log('OUTPUT', procOut);
     if (!procOut.success) {
       error = decoder.decode(procOut.stderr);
     } else {
@@ -299,7 +348,6 @@ async function runCode(lang: string, code: string, input: string): Promise<{ out
     }
   } catch (e) {
     error = e.message;
-    console.log(e);
   } finally {
     if (tempDir) await Deno.remove(tempDir, { recursive: true }).catch(() => {});
   }
@@ -329,7 +377,7 @@ function diffHtml(expected: string, actual: string): string {
         if (exp[j] === act[j]) {
           lineHtml += act[j] ?? ' ';
         } else {
-          lineHtml += `<span style="background-color:red;color:white;">${act[j] ?? ' '}</span>`;
+          lineHtml += `<span class="diff-error">${act[j] ?? ' '}</span>`;
         }
       }
       html += `${lineHtml}<br>`;
@@ -342,7 +390,7 @@ function handleMessage(ws: WebSocket, data: string) {
   const msg = JSON.parse(data);
   const name = connections.get(ws);
   switch (msg.type) {
-    case 'apply':
+    case 'apply': {
       if (phase !== 'registration') {
         ws.send(JSON.stringify({ type: 'error', msg: 'Registration closed' }));
         return;
@@ -350,7 +398,8 @@ function handleMessage(ws: WebSocket, data: string) {
       pending.push({ name: msg.name, lang: msg.lang, ws });
       processNextPending();
       break;
-    case 'reconnect':
+    }
+    case 'reconnect': {
       if (participants.has(msg.name) && participants.get(msg.name)!.accepted) {
         connections.set(ws, msg.name);
         ws.send(JSON.stringify({
@@ -358,14 +407,17 @@ function handleMessage(ws: WebSocket, data: string) {
           phase,
           accepted: true,
           lang: participants.get(msg.name)!.lang,
-          startTime: startTime?.getTime(),
-          duration,
+          startTime: startTime?.getTime() ?? null,
+          endTime: endTime?.getTime() ?? null,
+          scheduledStart: scheduledStart?.getTime() ?? null,
+          totalPossible,
         }));
       } else {
         ws.send(JSON.stringify({ type: 'not_registered' }));
       }
       break;
-    case 'test':
+    }
+    case 'test': {
       if (!name || phase !== 'ongoing') return;
       (async () => {
         const p = participants.get(name)!;
@@ -385,7 +437,8 @@ function handleMessage(ws: WebSocket, data: string) {
         }));
       })();
       break;
-    case 'submit':
+    }
+    case 'submit': {
       if (!name || phase !== 'ongoing') return;
       (async () => {
         const p = participants.get(name)!;
@@ -422,10 +475,12 @@ function handleMessage(ws: WebSocket, data: string) {
           currentScore: ps.currentScore,
           maxScore: ps.maxScore,
           totalCurrent: p.totalCurrent,
+          totalPossible,
         }));
       })();
       break;
-    case 'get_leaderboard':
+    }
+    case 'get_leaderboard': {
       const lb: Record<string, { name: string; points: number }[]> = {};
       ['Python', 'Java', 'C++', 'C'].forEach(lang => {
         lb[lang] = Array.from(participants.values())
@@ -435,6 +490,7 @@ function handleMessage(ws: WebSocket, data: string) {
       });
       ws.send(JSON.stringify({ type: 'leaderboard', data: lb }));
       break;
+    }
   }
 }
 
@@ -451,8 +507,10 @@ Deno.serve({ port: 80 }, (req: Request) => {
       socket.send(JSON.stringify({
         type: 'status',
         phase,
-        startTime: startTime?.getTime(),
-        duration,
+        startTime: startTime?.getTime() ?? null,
+        endTime: endTime?.getTime() ?? null,
+        scheduledStart: scheduledStart?.getTime() ?? null,
+        totalPossible,
       }));
     };
     socket.onmessage = (e) => handleMessage(socket, e.data);
@@ -548,6 +606,10 @@ Deno.serve({ port: 80 }, (req: Request) => {
             overflow: auto;
             padding: ${0.1 * u}px;
             background-color: #111;
+          }
+          .diff-error {
+            background-color: red;
+            color: white;
           }
           #action {
             display: flex;
@@ -698,9 +760,11 @@ Deno.serve({ port: 80 }, (req: Request) => {
           let accepted = false;
           let phase = 'registration';
           let startTime = null;
-          let duration = null;
+          let endTime = null;
+          let scheduledStart = null;
           let timerInterval = null;
           let totalCurrent = 0;
+          let totalPossible = 0;
 
           const $ = id => document.getElementById(id);
           const home = $('home');
@@ -738,7 +802,7 @@ Deno.serve({ port: 80 }, (req: Request) => {
               const startX = e.clientX;
               const startLeft = getLeft();
               const startRight = getRight();
-              const scale = 50;
+              const scale = 200;
               function move(e) {
                 const delta = (e.clientX - startX) / scale;
                 setLeft(Math.max(0.1, startLeft + delta));
@@ -775,17 +839,27 @@ Deno.serve({ port: 80 }, (req: Request) => {
               const msg = JSON.parse(e.data);
               switch (msg.type) {
                 case 'status':
-                case 'phase':
+                case 'phase': {
                   phase = msg.phase;
-                  startTime = msg.startTime ? msg.startTime : startTime;
-                  duration = msg.duration ? msg.duration : duration;
+                  startTime = msg.startTime ?? startTime;
+                  endTime = msg.endTime ?? endTime;
+                  scheduledStart = msg.scheduledStart ?? scheduledStart;
+                  totalPossible = msg.totalPossible ?? totalPossible;
                   if (msg.accepted) {
                     accepted = true;
                     lang = msg.lang;
                   }
                   updateUI();
                   break;
-                case 'accepted':
+                }
+                case 'time_update': {
+                  startTime = msg.startTime ?? startTime;
+                  endTime = msg.endTime ?? endTime;
+                  scheduledStart = msg.scheduledStart ?? scheduledStart;
+                  updateUI();
+                  break;
+                }
+                case 'accepted': {
                   accepted = true;
                   name = nameInput.value;
                   lang = langSelect.value;
@@ -793,35 +867,42 @@ Deno.serve({ port: 80 }, (req: Request) => {
                   localStorage.setItem('lang', lang);
                   updateUI();
                   break;
-                case 'declined':
+                }
+                case 'declined': {
                   alert('Application declined.');
                   applyBtn.textContent = 'Apply!';
                   applyBtn.disabled = false;
                   break;
-                case 'test_result':
+                }
+                case 'test_result': {
                   passed[msg.problem][msg.testcase] = msg.passed;
                   diffs[msg.problem][msg.testcase] = msg.diff || msg.error || '';
                   if (currentProblem === msg.problem) updateCases();
                   if (currentCase === msg.testcase && currentProblem === msg.problem) updateMatch();
                   break;
-                case 'submit_result':
+                }
+                case 'submit_result': {
                   msg.passed.forEach((p, i) => {
                     passed[msg.problem][i] = p;
                     diffs[msg.problem][i] = msg.diffs[i];
                   });
                   totalCurrent = msg.totalCurrent;
-                  score.textContent = \`Total Current Score: \${totalCurrent}\`;
+                  totalPossible = msg.totalPossible;
+                  score.textContent = \`Total Current Score: \${totalCurrent} / \${totalPossible}\`;
                   if (currentProblem === msg.problem) {
                     updateCases();
                     updateMatch();
                   }
                   break;
-                case 'leaderboard':
+                }
+                case 'leaderboard': {
                   populateLeaderboard(msg.data);
                   break;
-                case 'error':
+                }
+                case 'error': {
                   alert(msg.msg);
                   break;
+                }
               }
             };
             ws.onclose = () => {
@@ -840,7 +921,11 @@ Deno.serve({ port: 80 }, (req: Request) => {
             score.style.display = 'none';
             arenaElements.forEach(el => el.style.display = '');
             if (phase === 'registration') {
-              timeDiv.textContent = 'Waiting for start';
+              if (scheduledStart) {
+                timeDiv.textContent = \`Competition starts at \${new Date(scheduledStart).toLocaleTimeString()}\`;
+              } else {
+                timeDiv.textContent = 'Waiting for start';
+              }
               if (accepted) {
                 home.style.display = 'block';
                 nameInput.style.display = 'none';
@@ -879,10 +964,9 @@ Deno.serve({ port: 80 }, (req: Request) => {
           function startTimer() {
             if (timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(() => {
-              if (startTime && duration) {
+              if (endTime) {
                 const now = Date.now();
-                const end = startTime + duration;
-                let remaining = end - now;
+                let remaining = endTime - now;
                 if (remaining <= 0) {
                   remaining = 0;
                   clearInterval(timerInterval);
