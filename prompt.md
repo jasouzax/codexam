@@ -166,7 +166,7 @@ While everything is mostly working, here are some suggested fixes:
 
 ### Grok improve #4
 - Please add type to every variable, dont remove it and even add JSDoc comment to object's properties
-- Also add JSDoc or comment processes
+- Also add JSDoc or comment
 - Also use sometimes `Deno.stdout.write / Deno.stdout.writeSync` instead of console log especially for asking admin so that the "y/n" will not be in new line
 - Use ANSI escape color code `\x1b[` for better CLI interface (red for errors, yellow for asking or user interfearance, etc.)
 - When refreshing the page, the color coding for `#code` is not loaded so there is no colored code untill I start typing
