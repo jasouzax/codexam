@@ -45,3 +45,16 @@ While everything is mostly working, here are some suggested fixes:
 - Code difference checker is not working because it is labeling `\r` has the difference
 - If the websocket disconnected the `#time` should display "connect..." or something similar
 - Please add a new element located bottom of `#info` and top of `#time` but not overlaying it, that displays the participants total current score
+
+### Grok improve #2
+- Setting `start` and `end` date doesnt change participant's time message, like still saying "Waiting for start" despite setted new start date, similarly the time left doesnt change when set "end". Also if a start date is moved to the future while the competition is ongoing that means the competition is rescheduled/restarted so restart all competitor's scores, etc. The `duration` is just the default if end time is null
+- When submitting code, the result code output is empty so the external command is not working properly, this is the error:
+  TypeError: proc.stdin.write is not a function
+    at runCode (file:///C:/Users/jason/Desktop/codexam/codexam_grok:290:22)
+    at eventLoopTick (ext:core/01_core.js:179:7)
+    at async file:///C:/Users/jason/Desktop/codexam/codexam_grok:374:35
+- Please transfer `span` style of `#match` to inside the style not on the element for better readability and compactness
+- `startTime` and `scheduledStart`, and `endTime` and `scheduledEnd` seemed redundant that even my IDE is warning that `scheduledEnd` is never read
+- Use `{}` brackets inside of `switch` cases
+- The draggable `#div_l` and `#div_r` is too sensitive that when I draw my mouse right of it it moved faster then my mouse loosing contact with my mouse same with both
+- For current score, instead of just the current total score of the user display current score over total possible score so that the user can know how much more is left
