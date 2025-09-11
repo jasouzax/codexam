@@ -34,3 +34,14 @@ Each programming language has their own leaderboard based on points, each challe
 - Instead of putting the problems static, give a template variable containing the challenge's name, problem statement in HTML, and test cases (each has points, and expected output). Like maybe a variable named `challenges`
 - Design the interface, our school uses Red, Black, White has the main color palette
 - If you have any questions please ask before making the code
+
+### Grok improve
+While everything is mostly working, here are some suggested fixes:
+- I have to type "y" twice if I want to accept an application, fix this
+- For CLI I suggest that while "start" starts the competition immegetly, "start 10:30" sets the datetime to start. Same with "end 13:00"
+- For people who opened the website while the competition is ongoing should be shown `#over` not `#home` so they can see the current leaderboard
+- Please try to make the code more compact, like there is alot of `document.getElementById` which could be make into an `id` function or even a `$` to query select, just make the code more readable, compact, and less redundant
+- `Deno.run` was removed in Deno 2
+- Code difference checker is not working because it is labeling `\r` has the difference
+- If the websocket disconnected the `#time` should display "connect..." or something similar
+- Please add a new element located bottom of `#info` and top of `#time` but not overlaying it, that displays the participants total current score

@@ -1,0 +1,908 @@
+#!/usr/bin/env -S deno run -A --watch
+import { readLines } from "https://deno.land/std@0.224.0/io/read_lines.ts";
+
+const unit = 50;
+const duration = 90 * 60 * 1000; // 90 minutes in ms
+let phase: 'registration' | 'ongoing' | 'ended' = 'registration';
+let startTime: Date | null = null;
+let endTime: Date | null = null;
+
+interface Testcase {
+  input: string;
+  expected: string;
+  points: number;
+}
+
+interface Challenge {
+  name: string;
+  statement: string;
+  numTestcases: number;
+  testcases: Testcase[];
+}
+
+const challenges: Challenge[] = [
+  {
+    name: "FizzBuzz",
+    statement: `<p>Write a program that reads an integer n from standard input and prints the numbers from 1 to n, each on a new line. For multiples of 3, print "Fizz" instead of the number. For multiples of 5, print "Buzz". For numbers that are multiples of both 3 and 5, print "FizzBuzz".</p>`,
+    numTestcases: 4,
+    testcases: [
+      { input: "5\n", expected: "1\n2\nFizz\n4\nBuzz", points: 10 },
+      { input: "15\n", expected: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz", points: 20 },
+      { input: "1\n", expected: "1", points: 5 },
+      { input: "30\n", expected: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz\n16\n17\nFizz\n19\nBuzz\nFizz\n22\n23\nFizz\nBuzz\n26\nFizz\n28\n29\nFizzBuzz", points: 30 },
+    ],
+  },
+  {
+    name: "Trailing Zeros",
+    statement: `<p>Write a program that reads an integer n from standard input and outputs the number of trailing zeros in n! (factorial of n).</p>`,
+    numTestcases: 4,
+    testcases: [
+      { input: "5\n", expected: "1", points: 10 },
+      { input: "10\n", expected: "2", points: 15 },
+      { input: "25\n", expected: "6", points: 20 },
+      { input: "100\n", expected: "24", points: 30 },
+    ],
+  },
+  {
+    name: "Digital Root",
+    statement: `<p>The digital root of a number is obtained by repeatedly summing its digits until a single digit is reached. Write a program that reads an integer n from standard input and outputs its digital root.</p>`,
+    numTestcases: 4,
+    testcases: [
+      { input: "16\n", expected: "7", points: 10 },
+      { input: "942\n", expected: "6", points: 15 },
+      { input: "132189\n", expected: "6", points: 20 },
+      { input: "493193\n", expected: "2", points: 25 },
+    ],
+  },
+  {
+    name: "Diamond Elegance",
+    statement: `<p>Write a program that reads an odd integer n from standard input and prints a diamond shape made of '*' characters, centered, with height and width n. Use spaces for alignment, no trailing spaces on lines.</p><p>Example for n=3:</p><pre> *\n***\n *</pre>`,
+    numTestcases: 4,
+    testcases: [
+      { input: "1\n", expected: "*", points: 10 },
+      { input: "3\n", expected: " *\n***\n *", points: 15 },
+      { input: "5\n", expected: "  *\n ***\n*****\n ***\n  *", points: 20 },
+      { input: "7\n", expected: "   *\n  ***\n *****\n******\n *****\n  ***\n   *", points: 25 },
+    ],
+  },
+  {
+    name: "Roman Numeral",
+    statement: `<p>Write a program that reads an integer n (1 <= n <= 3999) from standard input and outputs its Roman numeral representation.</p>`,
+    numTestcases: 4,
+    testcases: [
+      { input: "3\n", expected: "III", points: 10 },
+      { input: "58\n", expected: "LVIII", points: 15 },
+      { input: "1994\n", expected: "MCMXCIV", points: 20 },
+      { input: "3999\n", expected: "MMMCMXCIX", points: 30 },
+    ],
+  },
+];
+
+interface ProblemScore {
+  maxScore: number;
+  currentScore: number;
+  achieveTime: Date | null;
+}
+
+interface Participant {
+  name: string;
+  lang: string;
+  accepted: boolean;
+  problemScores: ProblemScore[];
+  totalMax: number;
+  totalAchieveTime: Date | null;
+}
+
+const participants = new Map<string, Participant>();
+const connections = new Map<WebSocket, string>(); // ws to name
+const pending: { name: string; lang: string; ws: WebSocket }[] = [];
+let processing = false;
+
+async function processPending() {
+  if (processing || pending.length === 0) return;
+  processing = true;
+  while (pending.length > 0) {
+    const app = pending.shift()!;
+    console.log(`New application: ${app.name} (${app.lang}). Accept? (y/n)`);
+    for await (const line of readLines(Deno.stdin)) {
+      const trimmed = line.trim().toLowerCase();
+      if (trimmed === 'y') {
+        if (participants.has(app.name)) {
+          app.ws.send(JSON.stringify({ type: 'declined', msg: 'Name already taken' }));
+          break;
+        }
+        participants.set(app.name, {
+          name: app.name,
+          lang: app.lang,
+          accepted: true,
+          problemScores: challenges.map(() => ({ maxScore: 0, currentScore: 0, achieveTime: null })),
+          totalMax: 0,
+          totalAchieveTime: null,
+        });
+        connections.set(app.ws, app.name);
+        app.ws.send(JSON.stringify({ type: 'accepted' }));
+        break;
+      } else if (trimmed === 'n') {
+        app.ws.send(JSON.stringify({ type: 'declined' }));
+        break;
+      } else {
+        console.log('Invalid input. Accept? (y/n)');
+      }
+    }
+  }
+  processing = false;
+}
+
+async function handleCLI() {
+  for await (const line of readLines(Deno.stdin)) {
+    const cmd = line.trim().toLowerCase();
+    if (cmd === 'start' && phase === 'registration') {
+      phase = 'ongoing';
+      startTime = new Date();
+      endTime = new Date(startTime.getTime() + duration);
+      broadcast({ type: 'phase', phase, startTime: startTime.getTime(), duration });
+      console.log('Competition started.');
+    } else if (cmd === 'end' && phase === 'ongoing') {
+      phase = 'ended';
+      broadcast({ type: 'phase', phase });
+      console.log('Competition ended.');
+    }
+  }
+}
+
+function broadcast(msg: object) {
+  const str = JSON.stringify(msg);
+  for (const ws of connections.keys()) {
+    ws.send(str);
+  }
+}
+
+setInterval(() => {
+  if (phase === 'ongoing' && endTime && new Date() > endTime) {
+    phase = 'ended';
+    broadcast({ type: 'phase', phase });
+    console.log('Competition time up.');
+  }
+}, 1000);
+
+async function runCode(lang: string, code: string, input: string): Promise<{ output: string; error?: string }> {
+  let output = '';
+  let error = '';
+  let tempDir = '';
+  try {
+    tempDir = await Deno.makeTempDir();
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    let cmd: string[];
+    let file: string;
+    let execCmd: string[];
+
+    switch (lang) {
+      case 'Python':
+        file = `${tempDir}/main.py`;
+        await Deno.writeTextFile(file, code);
+        cmd = ['python', file];
+        break;
+      case 'Java':
+        file = `${tempDir}/Main.java`;
+        await Deno.writeTextFile(file, code);
+        const javacProc = await Deno.run({ cmd: ['javac', 'Main.java'], cwd: tempDir, stderr: 'piped' });
+        const javacStatus = await javacProc.status();
+        if (!javacStatus.success) {
+          error = decoder.decode(await javacProc.stderrOutput());
+          return { output, error };
+        }
+        cmd = ['java', '-cp', tempDir, 'Main'];
+        break;
+      case 'C++':
+        file = `${tempDir}/main.cpp`;
+        await Deno.writeTextFile(file, code);
+        const gppProc = await Deno.run({ cmd: ['g++', 'main.cpp', '-o', 'main'], cwd: tempDir, stderr: 'piped' });
+        const gppStatus = await gppProc.status();
+        if (!gppStatus.success) {
+          error = decoder.decode(await gppProc.stderrOutput());
+          return { output, error };
+        }
+        cmd = [`${tempDir}/main`];
+        break;
+      case 'C':
+        file = `${tempDir}/main.c`;
+        await Deno.writeTextFile(file, code);
+        const gccProc = await Deno.run({ cmd: ['gcc', 'main.c', '-o', 'main'], cwd: tempDir, stderr: 'piped' });
+        const gccStatus = await gccProc.status();
+        if (!gccStatus.success) {
+          error = decoder.decode(await gccProc.stderrOutput());
+          return { output, error };
+        }
+        cmd = [`${tempDir}/main`];
+        break;
+      default:
+        error = 'Unsupported language';
+        return { output, error };
+    }
+
+    const proc = await Deno.run({
+      cmd,
+      stdin: 'piped',
+      stdout: 'piped',
+      stderr: 'piped',
+      cwd: tempDir,
+    });
+
+    await proc.stdin!.write(encoder.encode(input));
+    await proc.stdin!.close();
+
+    const [outRaw, errRaw, status] = await Promise.all([
+      proc.output(),
+      proc.stderrOutput(),
+      proc.status(),
+    ]);
+
+    if (!status.success) {
+      error = decoder.decode(errRaw);
+    } else {
+      output = decoder.decode(outRaw);
+    }
+  } catch (e) {
+    error = e.message;
+  } finally {
+    if (tempDir) await Deno.remove(tempDir, { recursive: true });
+  }
+  return { output, error };
+}
+
+function diffHtml(expected: string, actual: string): string {
+  console.log('DIFF', expected, actual);
+  const expLines = expected.split('\n');
+  const actLines = actual.split('\n');
+  let html = '';
+  const maxLen = Math.max(expLines.length, actLines.length);
+  for (let i = 0; i < maxLen; i++) {
+    const exp = expLines[i] || '';
+    const act = actLines[i] || '';
+    if (exp === act) {
+      html += `${exp}<br>`;
+    } else {
+      let lineHtml = '';
+      const lineMax = Math.max(exp.length, act.length);
+      for (let j = 0; j < lineMax; j++) {
+        if (exp[j] === act[j]) {
+          lineHtml += act[j] || '';
+        } else {
+          lineHtml += `<span style="background-color:red;color:white;">${act[j] || ' '}</span>`;
+        }
+      }
+      html += `${lineHtml}<br>`;
+    }
+  }
+  return `<pre style="margin:0;">${html}</pre>`;
+}
+
+function handleMessage(ws: WebSocket, data: string) {
+  const msg = JSON.parse(data);
+  const name = connections.get(ws);
+  switch (msg.type) {
+    case 'apply':
+      if (phase !== 'registration') {
+        ws.send(JSON.stringify({ type: 'error', msg: 'Registration closed' }));
+        return;
+      }
+      pending.push({ name: msg.name, lang: msg.lang, ws });
+      processPending();
+      break;
+    case 'reconnect':
+      if (participants.has(msg.name) && participants.get(msg.name)!.accepted) {
+        connections.set(ws, msg.name);
+        ws.send(JSON.stringify({
+          type: 'status',
+          phase,
+          accepted: true,
+          lang: participants.get(msg.name)!.lang,
+          startTime: startTime?.getTime(),
+          duration,
+        }));
+      } else {
+        ws.send(JSON.stringify({ type: 'not_registered' }));
+      }
+      break;
+    case 'test':
+      if (!name || phase !== 'ongoing') return;
+      (async () => {
+        const p = participants.get(name)!;
+        const ch = challenges[msg.problem];
+        const tc = ch.testcases[msg.case];
+        const { output, error } = await runCode(p.lang, msg.code, tc.input);
+        const actual = (output || '').trim();
+        const exp = tc.expected.trim();
+        const passed = !error && actual === exp;
+        const diff = passed ? '' : diffHtml(exp, actual || '');
+        ws.send(JSON.stringify({
+          type: 'test_result',
+          problem: msg.problem,
+          testcase: msg.case,
+          passed,
+          diff,
+          error,
+        }));
+      })();
+      break;
+    case 'submit':
+      if (!name || phase !== 'ongoing') return;
+      (async () => {
+        const p = participants.get(name)!;
+        const ch = challenges[msg.problem];
+        const passedArr: boolean[] = [];
+        const diffs: string[] = [];
+        let currentScore = 0;
+        for (const tc of ch.testcases) {
+          const { output, error } = await runCode(p.lang, msg.code, tc.input);
+          const actual = (output || '').trim();
+          const exp = tc.expected.trim();
+          const passed = !error && actual === exp;
+          passedArr.push(passed);
+          diffs.push(passed ? '' : diffHtml(exp, actual || ''));
+          if (passed) currentScore += tc.points;
+        }
+        const ps = p.problemScores[msg.problem];
+        ps.currentScore = currentScore;
+        if (currentScore > ps.maxScore) {
+          ps.maxScore = currentScore;
+          ps.achieveTime = new Date();
+          let newTotal = 0;
+          for (const score of p.problemScores) {
+            newTotal += score.maxScore;
+          }
+          if (newTotal > p.totalMax) {
+            p.totalMax = newTotal;
+            p.totalAchieveTime = new Date();
+          }
+        }
+        ws.send(JSON.stringify({
+          type: 'submit_result',
+          problem: msg.problem,
+          passed: passedArr,
+          diffs,
+          currentScore: ps.currentScore,
+          maxScore: ps.maxScore,
+        }));
+      })();
+      break;
+    case 'get_leaderboard':
+      const lb: Record<string, { name: string; points: number }[]> = {};
+      ['Python', 'Java', 'C++', 'C'].forEach(lang => {
+        lb[lang] = Array.from(participants.values())
+          .filter(p => p.lang === lang && p.accepted)
+          .sort((a, b) => b.totalMax - a.totalMax || (a.totalAchieveTime?.getTime() ?? 0) - (b.totalAchieveTime?.getTime() ?? 0))
+          .map(p => ({ name: p.name, points: p.totalMax }));
+      });
+      ws.send(JSON.stringify({ type: 'leaderboard', data: lb }));
+      break;
+  }
+}
+
+const clientChallenges = JSON.stringify(challenges.map(c => ({
+  name: c.name,
+  statement: c.statement,
+  numTestcases: c.testcases.length,
+})));
+
+Deno.serve({ port: 80 }, (req: Request) => {
+  if (req.headers.get('upgrade') === 'websocket') {
+    const { socket, response } = Deno.upgradeWebSocket(req);
+    socket.onopen = () => {
+      // Send current status on connect
+      socket.send(JSON.stringify({
+        type: 'status',
+        phase,
+        startTime: startTime?.getTime(),
+        duration,
+      }));
+    };
+    socket.onmessage = (e) => handleMessage(socket, e.data);
+    socket.onclose = () => connections.delete(socket);
+    socket.onerror = (e) => console.error('WS error:', e);
+    return response;
+  }
+
+  const u = unit;
+  return new Response(/*html*/`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Coder's Arena</title>
+        <style>
+          :focus {outline:none}
+          html {height:100%; background-color: black; color: white;}
+          body {
+            display: grid;
+            height: calc(100% - ${0.2 * u}px);
+            grid-template: ${0.5 * u}px ${u}px auto ${0.5 * u}px / 1fr ${0.2 * u}px 2fr ${0.2 * u}px 1fr;
+            margin: 0;
+            padding: ${0.1 * u}px;
+            background-color: black;
+            color: white;
+            font-family: Arial, sans-serif;
+          }
+          #div-l {grid-area:3/2; cursor: col-resize;}
+          #div-r {grid-area:3/4; cursor: col-resize;}
+          #div-l,#div-r {
+            background-color: #333;
+          }
+          #title {
+            grid-area:1/1/span 1/span 5;
+            text-align: center;
+            font-size: ${0.6 * u}px;
+            color: red;
+            font-weight: bold;
+          }
+          #tabs {
+            display: flex;
+            grid-area:2/1/span 1/span 5;
+            background-color: #222;
+          }
+          #tabs button {
+            flex-grow: 1;
+            background-color: red;
+            color: white;
+            border: none;
+            font-size: ${0.3 * u}px;
+            cursor: pointer;
+          }
+          #tabs button:hover {
+            background-color: #cc0000;
+          }
+          #info {
+            grid-area:3/1;
+            background-color: #222;
+            padding: ${0.2 * u}px;
+            overflow: auto;
+          }
+          #code {
+            grid-area:3/3;
+            font: ${0.3 * u}px 'Courier New', monospace;
+            background-color: #333;
+            color: white;
+            border: none;
+            padding: ${0.2 * u}px;
+            resize: none;
+          }
+          #result {
+            display: grid;
+            grid-template: ${u}px auto ${u}px / 1fr;
+            grid-area:3/5;
+            background-color: #222;
+            padding: ${0.2 * u}px;
+          }
+          #cases {
+            display: flex;
+            justify-content: space-around;
+          }
+          #cases button {
+            width: ${0.8 * u}px;
+            height: ${0.8 * u}px;
+            background-color: #555;
+            color: white;
+            border: none;
+            cursor: pointer;
+          }
+          #cases button.passed { background-color: green; }
+          #cases button.failed { background-color: red; }
+          #match {
+            overflow: auto;
+            padding: ${0.1 * u}px;
+            background-color: #111;
+          }
+          #action {
+            display: flex;
+            justify-content: space-around;
+          }
+          #action button {
+            background-color: red;
+            color: white;
+            border: none;
+            padding: ${0.2 * u}px;
+            cursor: pointer;
+          }
+          #action button:hover {
+            background-color: #cc0000;
+          }
+          #time {
+            grid-area:4/1/span 1/span 5;
+            text-align: center;
+            font-size: ${0.4 * u}px;
+            color: white;
+          }
+          #home, #over, #wait {
+            grid-area: 2/1/span 2/span 5;
+            background-color: black;
+            padding: ${u}px;
+            text-align: center;
+            display: none;
+          }
+          #home input, #home select {
+            background-color: #333;
+            color: white;
+            border: 1px solid #555;
+            padding: ${0.1 * u}px;
+            margin: ${0.1 * u}px;
+          }
+          #home button, #wait button {
+            background-color: red;
+            color: white;
+            border: none;
+            padding: ${0.2 * u}px ${0.4 * u}px;
+            cursor: pointer;
+          }
+          #over table {
+            width: 80%;
+            margin: 0 auto;
+            border-collapse: collapse;
+          }
+          #over th, #over td {
+            border: 1px solid #555;
+            padding: ${0.1 * u}px;
+            text-align: left;
+          }
+          #over th {
+            background-color: red;
+            color: white;
+          }
+          #over h3 {
+            color: red;
+          }
+          #waiting-text { display: none; }
+        </style>
+      </head>
+      <body>
+        <!-- Title -->
+        <div id="title">Coder's Arena</div>
+        <!-- Draggable vertical markers -->
+        <div id="div-l"></div>
+        <div id="div-r"></div>
+        <!-- Problems -->
+        <div id="tabs"></div>
+        <!-- Problem Statement -->
+        <div id="info"></div>
+        <!-- Code -->
+        <textarea id="code" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea>
+        <!-- Running -->
+        <div id="result">
+          <div id="cases"></div>
+          <div id="match"></div>
+          <div id="action">
+            <button id="test-btn">Test</button>
+            <button id="submit-btn">Submit</button>
+            <button id="finish-btn">Finish</button>
+          </div>
+        </div>
+        <!-- Time limit -->
+        <div id="time">Waiting for start</div>
+        <!-- Registering -->
+        <div id="home">
+          <h1 style="color: red;">Welcome to Coder's Arena 2025!</h1>
+          <p>Enter Name:</p>
+          <input id="name-input"></input>
+          <p>Select Language:</p>
+          <select id="lang-select">
+            <option>Python</option>
+            <option>Java</option>
+            <option>C++</option>
+            <option>C</option>
+          </select>
+          <button id="apply-btn">Apply!</button>
+          <p id="waiting-text">Okay, you're registered! Wait for the competition to start.</p>
+        </div>
+        <!-- Waiting -->
+        <div id="wait">
+          <h1 style="color: red;">You submitted, wait for competition to end</h1>
+          <button id="go-back-btn">Go back</button>
+        </div>
+        <!-- Over -->
+        <div id="over">
+          <h1 style="color: red;">The Coder's Arena is finished!</h1>
+          <p>Here are the winners!</p>
+          <h3>Python</h3>
+          <table id="lb-python">
+            <tr><th>Name</th><th>Points</th></tr>
+          </table>
+          <h3>Java</h3>
+          <table id="lb-java">
+            <tr><th>Name</th><th>Points</th></tr>
+          </table>
+          <h3>C++</h3>
+          <table id="lb-cpp">
+            <tr><th>Name</th><th>Points</th></tr>
+          </table>
+          <h3>C</h3>
+          <table id="lb-c">
+            <tr><th>Name</th><th>Points</th></tr>
+          </table>
+        </div>
+        <script>
+          const unit = ${unit};
+          const challenges = ${clientChallenges};
+          const ws = new WebSocket('ws://' + location.host);
+          let currentProblem = 0;
+          let currentCase = 0;
+          let passed = challenges.map(() => Array(challenges[0].numTestcases).fill(null)); // null: unknown, true/false
+          let diffs = challenges.map(() => Array(challenges[0].numTestcases).fill(''));
+          let name = localStorage.getItem('name');
+          let lang = localStorage.getItem('lang');
+          let accepted = false;
+          let phase = 'registration';
+          let startTime = null;
+          let duration = null;
+          let timerInterval = null;
+
+          const home = document.getElementById('home');
+          const wait = document.getElementById('wait');
+          const over = document.getElementById('over');
+          const arenaElements = [document.getElementById('tabs'), document.getElementById('info'), document.getElementById('code'), document.getElementById('result'), document.getElementById('div-l'), document.getElementById('div-r')];
+          const timeDiv = document.getElementById('time');
+          const nameInput = document.getElementById('name-input');
+          const langSelect = document.getElementById('lang-select');
+          const applyBtn = document.getElementById('apply-btn');
+          const waitingText = document.getElementById('waiting-text');
+          const testBtn = document.getElementById('test-btn');
+          const submitBtn = document.getElementById('submit-btn');
+          const finishBtn = document.getElementById('finish-btn');
+          const goBackBtn = document.getElementById('go-back-btn');
+          const info = document.getElementById('info');
+          const code = document.getElementById('code');
+          const match = document.getElementById('match');
+          const casesDiv = document.getElementById('cases');
+          const tabs = document.getElementById('tabs');
+
+          let leftFr = 1, codeFr = 2, resultFr = 1;
+          const body = document.body;
+          function updateGrid() {
+            body.style.gridTemplateColumns = \`\${leftFr}fr \${0.2 * unit}px \${codeFr}fr \${0.2 * unit}px \${resultFr}fr\`;
+          }
+          updateGrid();
+
+          function makeDraggable(div, getLeft, getRight, setLeft, setRight) {
+            div.addEventListener('mousedown', (e) => {
+              e.preventDefault();
+              const startX = e.clientX;
+              const startLeft = getLeft();
+              const startRight = getRight();
+              const scale = 50; // adjust sensitivity
+              function move(e) {
+                const delta = (e.clientX - startX) / scale;
+                setLeft(Math.max(0.1, startLeft + delta));
+                setRight(Math.max(0.1, startRight - delta));
+                updateGrid();
+              }
+              document.addEventListener('mousemove', move);
+              document.addEventListener('mouseup', () => document.removeEventListener('mousemove', move), { once: true });
+            });
+          }
+
+          makeDraggable(
+            document.getElementById('div-l'),
+            () => leftFr,
+            () => codeFr,
+            (v) => leftFr = v,
+            (v) => codeFr = v
+          );
+          makeDraggable(
+            document.getElementById('div-r'),
+            () => codeFr,
+            () => resultFr,
+            (v) => codeFr = v,
+            (v) => resultFr = v
+          );
+
+          function updateUI() {
+            home.style.display = 'none';
+            wait.style.display = 'none';
+            over.style.display = 'none';
+            arenaElements.forEach(el => el.style.display = '');
+            if (phase === 'registration') {
+              timeDiv.textContent = 'Waiting for start';
+              if (accepted) {
+                home.style.display = 'block';
+                nameInput.style.display = 'none';
+                langSelect.style.display = 'none';
+                applyBtn.style.display = 'none';
+                waitingText.style.display = 'block';
+                arenaElements.forEach(el => el.style.display = 'none');
+              } else {
+                home.style.display = 'block';
+                nameInput.style.display = '';
+                langSelect.style.display = '';
+                applyBtn.style.display = '';
+                waitingText.style.display = 'none';
+                arenaElements.forEach(el => el.style.display = 'none');
+              }
+            } else if (phase === 'ongoing') {
+              if (accepted) {
+                home.style.display = 'none';
+              } else {
+                home.style.display = 'block';
+                nameInput.style.display = 'none';
+                langSelect.style.display = 'none';
+                applyBtn.style.display = 'none';
+                waitingText.textContent = 'Competition ongoing. You are not registered.';
+                waitingText.style.display = 'block';
+              }
+              startTimer();
+            } else if (phase === 'ended') {
+              over.style.display = 'block';
+              arenaElements.forEach(el => el.style.display = 'none');
+              timeDiv.textContent = 'Competition Over';
+              ws.send(JSON.stringify({ type: 'get_leaderboard' }));
+            }
+          }
+
+          function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+              if (startTime && duration) {
+                const now = Date.now();
+                const end = startTime + duration;
+                let remaining = end - now;
+                if (remaining <= 0) {
+                  remaining = 0;
+                  clearInterval(timerInterval);
+                  phase = 'ended';
+                  updateUI();
+                }
+                const hours = Math.floor(remaining / 3600000);
+                const mins = Math.floor((remaining % 3600000) / 60000);
+                const secs = Math.floor((remaining % 60000) / 1000);
+                timeDiv.textContent = \`\${hours.toString().padStart(2, '0')}:\${mins.toString().padStart(2, '0')}:\${secs.toString().padStart(2, '0')} left\`;
+              }
+            }, 1000);
+          }
+
+          function selectProblem(index) {
+            currentProblem = index;
+            info.innerHTML = challenges[index].statement;
+            code.value = localStorage.getItem(\`code_\${index}\`) || '';
+            updateCases();
+            updateMatch();
+            tabs.querySelectorAll('button').forEach((b, i) => b.style.backgroundColor = i === index ? '#990000' : 'red');
+          }
+
+          function updateCases() {
+            casesDiv.innerHTML = '';
+            for (let i = 0; i < challenges[currentProblem].numTestcases; i++) {
+              const btn = document.createElement('button');
+              btn.textContent = i.toString().padStart(2, '0');
+              if (passed[currentProblem][i] === true) btn.classList.add('passed');
+              else if (passed[currentProblem][i] === false) btn.classList.add('failed');
+              btn.onclick = () => {
+                currentCase = i;
+                updateMatch();
+              };
+              casesDiv.appendChild(btn);
+            }
+          }
+
+          function updateMatch() {
+            match.innerHTML = diffs[currentProblem][currentCase] || '';
+          }
+
+          function populateLeaderboard(data) {
+            const langs = { Python: 'lb-python', Java: 'lb-java', 'C++': 'lb-cpp', C: 'lb-c' };
+            for (const [lang, tableId] of Object.entries(langs)) {
+              const table = document.getElementById(tableId);
+              table.innerHTML = '<tr><th>Name</th><th>Points</th></tr>';
+              (data[lang] || []).forEach(entry => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = \`<td>\${entry.name}</td><td>\${entry.points}</td>\`;
+                table.appendChild(tr);
+              });
+            }
+          }
+
+          ws.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            switch (msg.type) {
+              case 'status':
+              case 'phase':
+                phase = msg.phase;
+                startTime = msg.startTime ? msg.startTime : startTime;
+                duration = msg.duration ? msg.duration : duration;
+                if (msg.accepted) {
+                  accepted = true;
+                  lang = msg.lang;
+                }
+                updateUI();
+                break;
+              case 'accepted':
+                accepted = true;
+                name = nameInput.value;
+                lang = langSelect.value;
+                localStorage.setItem('name', name);
+                localStorage.setItem('lang', lang);
+                updateUI();
+                break;
+              case 'declined':
+                alert('Application declined.');
+                break;
+              case 'test_result':
+                passed[msg.problem][msg.testcase] = msg.passed;
+                diffs[msg.problem][msg.testcase] = msg.diff || msg.error || '';
+                if (currentProblem === msg.problem) updateCases();
+                if (currentCase === msg.testcase && currentProblem === msg.problem) updateMatch();
+                break;
+              case 'submit_result':
+                msg.passed.forEach((p, i) => {
+                  passed[msg.problem][i] = p;
+                  diffs[msg.problem][i] = msg.diffs[i];
+                });
+                if (currentProblem === msg.problem) {
+                  updateCases();
+                  updateMatch();
+                }
+                // Could display scores somewhere, but for now, just update cases
+                break;
+              case 'leaderboard':
+                populateLeaderboard(msg.data);
+                break;
+              case 'error':
+                alert(msg.msg);
+                break;
+            }
+          };
+
+          applyBtn.onclick = () => {
+            const n = nameInput.value.trim();
+            const l = langSelect.value;
+            if (!n) return alert('Enter name');
+            ws.send(JSON.stringify({ type: 'apply', name: n, lang: l }));
+            applyBtn.textContent = 'Waiting...';
+            applyBtn.disabled = true;
+          };
+
+          testBtn.onclick = () => {
+            if (phase !== 'ongoing' || !accepted) return;
+            ws.send(JSON.stringify({ type: 'test', problem: currentProblem, case: currentCase, code: code.value, lang }));
+          };
+
+          submitBtn.onclick = () => {
+            if (phase !== 'ongoing' || !accepted) return;
+            ws.send(JSON.stringify({ type: 'submit', problem: currentProblem, code: code.value, lang }));
+          };
+
+          finishBtn.onclick = () => {
+            wait.style.display = 'block';
+            arenaElements.forEach(el => el.style.display = 'none');
+          };
+
+          goBackBtn.onclick = () => {
+            wait.style.display = 'none';
+            arenaElements.forEach(el => el.style.display = '');
+          };
+
+          code.addEventListener('input', () => {
+            localStorage.setItem(\`code_\${currentProblem}\`, code.value);
+          });
+
+          // Init tabs
+          challenges.forEach((ch, i) => {
+            const btn = document.createElement('button');
+            btn.textContent = ch.name;
+            btn.onclick = () => selectProblem(i);
+            tabs.appendChild(btn);
+          });
+          selectProblem(0);
+
+          // Check reconnect
+          if (name) {
+            ws.onopen = () => ws.send(JSON.stringify({ type: 'reconnect', name }));
+          } else {
+            updateUI();
+          }
+        </script>
+      </body>
+    </html>
+  `, {
+    headers: { 'content-type': 'text/html' },
+  });
+});
+
+handleCLI();
