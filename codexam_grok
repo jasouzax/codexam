@@ -1,149 +1,178 @@
 #!/usr/bin/env -S deno run -A --watch
-import { readLines } from "https://deno.land/std@0.224.0/io/read_lines.ts";
+import { TextLineStream } from "https://deno.land/std@0.224.0/streams/text_line_stream.ts";
 
+// #region Configurations - Developer can modify
+/** Unit of the interface in Pixels */
 const unit = 50;
-const duration = 90 * 60 * 1000; // 90 minutes in ms
-let phase: 'registration' | 'ongoing' | 'ended' = 'registration';
-let startTime: Date | null = null;
-let endTime: Date | null = null;
-let scheduledStart: Date | null = null;
-let scheduledEnd: Date | null = null;
-
-interface Testcase {
-  input: string;
-  expected: string;
-  points: number;
-}
-
-interface Challenge {
-  name: string;
-  statement: string;
-  numTestcases: number;
-  testcases: Testcase[];
-}
-
-const challenges: Challenge[] = [
+/** Challenges */
+const challenges = [
   {
     name: "FizzBuzz",
-    statement: `<p>Write a program that reads an integer n from standard input and prints the numbers from 1 to n, each on a new line. For multiples of 3, print "Fizz" instead of the number. For multiples of 5, print "Buzz". For numbers that are multiples of both 3 and 5, print "FizzBuzz".</p>`,
-    numTestcases: 4,
-    testcases: [
-      { input: "5\n", expected: "1\n2\nFizz\n4\nBuzz", points: 10 },
-      { input: "15\n", expected: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz", points: 20 },
-      { input: "1\n", expected: "1", points: 5 },
-      { input: "30\n", expected: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz\n16\n17\nFizz\n19\nBuzz\nFizz\n22\n23\nFizz\nBuzz\n26\nFizz\n28\n29\nFizzBuzz", points: 30 },
+    info: `<p>Write a program that reads an integer n from standard input and prints the numbers from 1 to n, each on a new line. For multiples of 3, print "Fizz" instead of the number. For multiples of 5, print "Buzz". For numbers that are multiples of both 3 and 5, print "FizzBuzz".</p>`,
+    test: [
+      { input: "5\n", output: "1\n2\nFizz\n4\nBuzz", points: 10 },
+      { input: "15\n", output: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz", points: 20 },
+      { input: "1\n", output: "1", points: 5 },
+      { input: "30\n", output: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz\n16\n17\nFizz\n19\nBuzz\nFizz\n22\n23\nFizz\nBuzz\n26\nFizz\n28\n29\nFizzBuzz", points: 30 },
     ],
   },
   {
     name: "Trailing Zeros",
-    statement: `<p>Write a program that reads an integer n from standard input and outputs the number of trailing zeros in n! (factorial of n).</p>`,
-    numTestcases: 4,
-    testcases: [
-      { input: "5\n", expected: "1", points: 10 },
-      { input: "10\n", expected: "2", points: 15 },
-      { input: "25\n", expected: "6", points: 20 },
-      { input: "100\n", expected: "24", points: 30 },
+    info: `<p>Write a program that reads an integer n from standard input and outputs the number of trailing zeros in n! (factorial of n).</p>`,
+    test: [
+      { input: "5\n", output: "1", points: 10 },
+      { input: "10\n", output: "2", points: 15 },
+      { input: "25\n", output: "6", points: 20 },
+      { input: "100\n", output: "24", points: 30 },
     ],
   },
   {
     name: "Digital Root",
-    statement: `<p>The digital root of a number is obtained by repeatedly summing its digits until a single digit is reached. Write a program that reads an integer n from standard input and outputs its digital root.</p>`,
-    numTestcases: 4,
-    testcases: [
-      { input: "16\n", expected: "7", points: 10 },
-      { input: "942\n", expected: "6", points: 15 },
-      { input: "132189\n", expected: "6", points: 20 },
-      { input: "493193\n", expected: "2", points: 25 },
+    info: `<p>The digital root of a number is obtained by repeatedly summing its digits until a single digit is reached. Write a program that reads an integer n from standard input and outputs its digital root.</p>`,
+    test: [
+      { input: "16\n", output: "7", points: 10 },
+      { input: "942\n", output: "6", points: 15 },
+      { input: "132189\n", output: "6", points: 20 },
+      { input: "493193\n", output: "2", points: 25 },
     ],
   },
   {
     name: "Diamond Elegance",
-    statement: `<p>Write a program that reads an odd integer n from standard input and prints a diamond shape made of '*' characters, centered, with height and width n. Use spaces for alignment, no trailing spaces on lines.</p><p>Example for n=3:</p><pre> *\n***\n *</pre>`,
-    numTestcases: 4,
-    testcases: [
-      { input: "1\n", expected: "*", points: 10 },
-      { input: "3\n", expected: " *\n***\n *", points: 15 },
-      { input: "5\n", expected: "  *\n ***\n*****\n ***\n  *", points: 20 },
-      { input: "7\n", expected: "   *\n  ***\n *****\n******\n *****\n  ***\n   *", points: 25 },
+    info: `<p>Write a program that reads an odd integer n from standard input and prints a diamond shape made of '*' characters, centered, with height and width n. Use spaces for alignment, no trailing spaces on lines.</p><p>Example for n=3:</p><pre> *\n***\n *</pre>`,
+    test: [
+      { input: "1\n", output: "*", points: 10 },
+      { input: "3\n", output: " *\n***\n *", points: 15 },
+      { input: "5\n", output: "  *\n ***\n*****\n ***\n  *", points: 20 },
+      { input: "7\n", output: "   *\n  ***\n *****\n******\n *****\n  ***\n   *", points: 25 },
     ],
   },
   {
     name: "Roman Numeral",
-    statement: `<p>Write a program that reads an integer n (1 <= n <= 3999) from standard input and outputs its Roman numeral representation.</p>`,
-    numTestcases: 4,
-    testcases: [
-      { input: "3\n", expected: "III", points: 10 },
-      { input: "58\n", expected: "LVIII", points: 15 },
-      { input: "1994\n", expected: "MCMXCIV", points: 20 },
-      { input: "3999\n", expected: "MMMCMXCIX", points: 30 },
+    info: `<p>Write a program that reads an integer n (1 <= n <= 3999) from standard input and outputs its Roman numeral representation.</p>`,
+    test: [
+      { input: "3\n", output: "III", points: 10 },
+      { input: "58\n", output: "LVIII", points: 15 },
+      { input: "1994\n", output: "MCMXCIV", points: 20 },
+      { input: "3999\n", output: "MMMCMXCIX", points: 30 },
     ],
   },
 ];
-
-interface ProblemScore {
-  maxScore: number;
-  currentScore: number;
-  achieveTime: Date | null;
+// #endregion
+// #region System variables - Modifed on runtime
+/** Current phase of competition */
+let phase = 'start';
+/** Starting date of competition */
+let time_start = null;
+/** Ending date of competition */
+let time_end = null;
+/** Scheduled start date */
+let scheduled_start = null;
+/** Scheduled end date */
+let scheduled_end = null;
+/** Default duration in ms */
+const default_duration = 90 * 60 * 1000;
+/** Total possible points */
+const total_points = challenges.reduce((sum, ch) => sum + ch.test.reduce((s, tc) => s + tc.points, 0), 0);
+/** Participants */
+const participants = new Map();
+/** Websocket to participant name */
+const connections = new Map();
+/** Pending participant applications */
+const pending = [];
+/** Current pending applicant being processed */
+let current_pending = null;
+// #endregion
+// #region Action - Functions
+/** Process next pending application */
+function process_next_pending() {
+  if (current_pending || pending.length === 0) return;
+  current_pending = pending.shift();
+  console.log(`New application: ${current_pending.name} (${current_pending.lang}). Accept? (y/n)`);
 }
 
-interface Participant {
-  name: string;
-  lang: string;
-  accepted: boolean;
-  problemScores: ProblemScore[];
-  totalMax: number;
-  totalCurrent: number;
-  totalAchieveTime: Date | null;
-}
-
-const totalPossible = challenges.reduce((sum, ch) => sum + ch.testcases.reduce((s, tc) => s + tc.points, 0), 0);
-
-const participants = new Map<string, Participant>();
-const connections = new Map<WebSocket, string>(); // ws to name
-const pending: { name: string; lang: string; ws: WebSocket }[] = [];
-let currentPending: { name: string; lang: string; ws: WebSocket } | null = null;
-
-function processNextPending() {
-  if (currentPending || pending.length === 0) return;
-  currentPending = pending.shift()!;
-  console.log(`New application: ${currentPending.name} (${currentPending.lang}). Accept? (y/n)`);
-}
-
-function resetScores() {
+/** Reset all participant scores */
+function reset_scores() {
   for (const p of participants.values()) {
-    p.problemScores = challenges.map(() => ({ maxScore: 0, currentScore: 0, achieveTime: null }));
-    p.totalMax = 0;
-    p.totalCurrent = 0;
-    p.totalAchieveTime = null;
+    p.problem_scores = challenges.map(() => ({ max_score: 0, current_score: 0, achieve_time: null }));
+    p.total_max = 0;
+    p.total_current = 0;
+    p.total_achieve_time = null;
   }
 }
 
-async function cliInput() {
-  for await (const line of readLines(Deno.stdin)) {
+/** Parse time string to Date */
+function parse_time(time_str) {
+  const [h, m] = time_str.split(':').map(Number);
+  if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
+}
+
+/** Start the competition */
+function start_competition() {
+  phase = 'ongoing';
+  time_start = new Date();
+  time_end = new Date(time_start.getTime() + default_duration);
+  if (scheduled_end && scheduled_end > time_start) time_end = scheduled_end;
+  scheduled_start = null;
+  scheduled_end = null;
+  broadcast({ type: 'phase', phase });
+  broadcast_time();
+  console.log('Competition started.');
+}
+
+/** End the competition */
+function end_competition() {
+  phase = 'ended';
+  scheduled_end = null;
+  broadcast({ type: 'phase', phase });
+  console.log('Competition ended.');
+}
+
+/** Broadcast message to all connections */
+function broadcast(msg) {
+  const str = JSON.stringify(msg);
+  for (const ws of connections.keys()) ws.send(str);
+}
+
+/** Broadcast time updates */
+function broadcast_time() {
+  broadcast({
+    type: 'time_update',
+    time_start: time_start?.getTime() ?? null,
+    time_end: time_end?.getTime() ?? null,
+    scheduled_start: scheduled_start?.getTime() ?? null,
+  });
+}
+
+/** Handle CLI inputs */
+async function cli_input() {
+  const readable = Deno.stdin.readable.pipeThrough(new TextDecoderStream()).pipeThrough(new TextLineStream());
+  for await (const line of readable) {
     const trimmed = line.trim().toLowerCase();
-    if (currentPending) {
+    if (current_pending) {
       if (trimmed === 'y') {
-        if (participants.has(currentPending.name)) {
-          currentPending.ws.send(JSON.stringify({ type: 'declined', msg: 'Name already taken' }));
+        if (participants.has(current_pending.name)) {
+          current_pending.ws.send(JSON.stringify({ type: 'declined', msg: 'Name already taken' }));
         } else {
-          participants.set(currentPending.name, {
-            name: currentPending.name,
-            lang: currentPending.lang,
+          participants.set(current_pending.name, {
+            name: current_pending.name,
+            lang: current_pending.lang,
             accepted: true,
-            problemScores: challenges.map(() => ({ maxScore: 0, currentScore: 0, achieveTime: null })),
-            totalMax: 0,
-            totalCurrent: 0,
-            totalAchieveTime: null,
+            problem_scores: challenges.map(() => ({ max_score: 0, current_score: 0, achieve_time: null })),
+            total_max: 0,
+            total_current: 0,
+            total_achieve_time: null,
           });
-          connections.set(currentPending.ws, currentPending.name);
-          currentPending.ws.send(JSON.stringify({ type: 'accepted' }));
+          connections.set(current_pending.ws, current_pending.name);
+          current_pending.ws.send(JSON.stringify({ type: 'accepted' }));
         }
-        currentPending = null;
-        processNextPending();
+        current_pending = null;
+        process_next_pending();
       } else if (trimmed === 'n') {
-        currentPending.ws.send(JSON.stringify({ type: 'declined' }));
-        currentPending = null;
-        processNextPending();
+        current_pending.ws.send(JSON.stringify({ type: 'declined' }));
+        current_pending = null;
+        process_next_pending();
       } else {
         console.log('Invalid input. Accept? (y/n)');
       }
@@ -152,59 +181,59 @@ async function cliInput() {
       const cmd = parts[0];
       const now = new Date();
       if (cmd === 'start') {
-        let targetTime: Date | null = null;
+        let target_time = null;
         if (parts.length > 1) {
-          targetTime = parseTime(parts[1]);
-          if (!targetTime) {
+          target_time = parse_time(parts[1]);
+          if (!target_time) {
             console.log('Invalid time format. Use HH:MM');
             continue;
           }
         } else {
-          targetTime = now;
+          target_time = now;
         }
-        if (phase === 'registration') {
-          if (targetTime <= now) {
-            startCompetition();
+        if (phase === 'start') {
+          if (target_time <= now) {
+            start_competition();
           } else {
-            scheduledStart = targetTime;
-            broadcastTime();
-            console.log(`Competition scheduled to start at ${targetTime.toLocaleTimeString()}.`);
+            scheduled_start = target_time;
+            broadcast_time();
+            console.log(`Competition scheduled to start at ${target_time.toLocaleTimeString()}.`);
           }
         } else if (phase === 'ongoing') {
-          if (targetTime > now) {
-            phase = 'registration';
-            scheduledStart = targetTime;
-            startTime = null;
-            endTime = null;
-            resetScores();
+          if (target_time > now) {
+            phase = 'start';
+            scheduled_start = target_time;
+            time_start = null;
+            time_end = null;
+            reset_scores();
             broadcast({ type: 'phase', phase });
-            broadcastTime();
-            console.log(`Competition rescheduled to start at ${targetTime.toLocaleTimeString()}. Scores reset.`);
+            broadcast_time();
+            console.log(`Competition rescheduled to start at ${target_time.toLocaleTimeString()}. Scores reset.`);
           } else {
             console.log('Cannot reschedule to past or present during ongoing.');
           }
         }
-      } else if (cmd === 'end' && (phase === 'registration' || phase === 'ongoing')) {
-        let targetTime: Date | null = null;
+      } else if (cmd === 'end' && (phase === 'start' || phase === 'ongoing')) {
+        let target_time = null;
         if (parts.length > 1) {
-          targetTime = parseTime(parts[1]);
-          if (!targetTime) {
+          target_time = parse_time(parts[1]);
+          if (!target_time) {
             console.log('Invalid time format. Use HH:MM');
             continue;
           }
         } else {
-          targetTime = now;
+          target_time = now;
         }
-        if (targetTime <= now) {
-          endCompetition();
+        if (target_time <= now) {
+          end_competition();
         } else {
-          if (phase === 'registration') {
-            scheduledEnd = targetTime;
-            console.log(`End scheduled at ${targetTime.toLocaleTimeString()}.`);
+          if (phase === 'start') {
+            scheduled_end = target_time;
+            console.log(`End scheduled at ${target_time.toLocaleTimeString()}.`);
           } else {
-            endTime = targetTime;
-            broadcastTime();
-            console.log(`End time updated to ${targetTime.toLocaleTimeString()}.`);
+            time_end = target_time;
+            broadcast_time();
+            console.log(`End time updated to ${target_time.toLocaleTimeString()}.`);
           }
         }
       } else {
@@ -214,117 +243,61 @@ async function cliInput() {
   }
 }
 
-function parseTime(timeStr: string): Date | null {
-  const [h, m] = timeStr.split(':').map(Number);
-  if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
-  const now = new Date();
-  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
-  return target;
-}
-
-function startCompetition() {
-  phase = 'ongoing';
-  startTime = new Date();
-  endTime = new Date(startTime.getTime() + duration);
-  if (scheduledEnd && scheduledEnd > startTime) {
-    endTime = scheduledEnd;
-  }
-  scheduledStart = null;
-  scheduledEnd = null;
-  broadcast({ type: 'phase', phase });
-  broadcastTime();
-  console.log('Competition started.');
-}
-
-function endCompetition() {
-  phase = 'ended';
-  scheduledEnd = null;
-  broadcast({ type: 'phase', phase });
-  console.log('Competition ended.');
-}
-
-function broadcast(msg: object) {
-  const str = JSON.stringify(msg);
-  for (const ws of connections.keys()) {
-    ws.send(str);
-  }
-}
-
-function broadcastTime() {
-  broadcast({
-    type: 'time_update',
-    startTime: startTime?.getTime() ?? null,
-    endTime: endTime?.getTime() ?? null,
-    scheduledStart: scheduledStart?.getTime() ?? null,
-  });
-}
-
-setInterval(() => {
-  const now = new Date();
-  if (scheduledStart && now >= scheduledStart) {
-    startCompetition();
-  }
-  if (phase === 'ongoing' && endTime && now > endTime) {
-    endCompetition();
-  }
-}, 1000);
-
-async function runCode(lang: string, code: string, input: string): Promise<{ output: string; error?: string }> {
+/** Run code in specified language */
+async function run_code(lang, code, input) {
   let output = '';
   let error = '';
-  let tempDir = '';
+  let temp_dir = '';
   try {
-    tempDir = await Deno.makeTempDir();
+    temp_dir = await Deno.makeTempDir();
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
-
-    let cmd: string[];
-    let file: string;
-
+    let cmd;
+    let file;
     switch (lang) {
       case 'Python': {
-        file = `${tempDir}/main.py`;
+        file = `${temp_dir}/main.py`;
         await Deno.writeTextFile(file, code);
         cmd = ['python', file];
         break;
       }
       case 'Java': {
-        file = `${tempDir}/Main.java`;
+        file = `${temp_dir}/Main.java`;
         await Deno.writeTextFile(file, code);
-        const javacCmd = new Deno.Command('javac', { args: ['Main.java'], cwd: tempDir, stderr: 'piped' });
-        const javacProc = javacCmd.spawn();
-        const javacOut = await javacProc.output();
-        if (!javacOut.success) {
-          error = decoder.decode(javacOut.stderr);
+        const javac_cmd = new Deno.Command('javac', { args: ['Main.java'], cwd: temp_dir, stderr: 'piped' });
+        const javac_proc = javac_cmd.spawn();
+        const javac_out = await javac_proc.output();
+        if (!javac_out.success) {
+          error = decoder.decode(javac_out.stderr);
           return { output, error };
         }
-        cmd = ['java', '-cp', tempDir, 'Main'];
+        cmd = ['java', '-cp', temp_dir, 'Main'];
         break;
       }
       case 'C++': {
-        file = `${tempDir}/main.cpp`;
+        file = `${temp_dir}/main.cpp`;
         await Deno.writeTextFile(file, code);
-        const gppCmd = new Deno.Command('g++', { args: ['main.cpp', '-o', 'main'], cwd: tempDir, stderr: 'piped' });
-        const gppProc = gppCmd.spawn();
-        const gppOut = await gppProc.output();
-        if (!gppOut.success) {
-          error = decoder.decode(gppOut.stderr);
+        const gpp_cmd = new Deno.Command('g++', { args: ['main.cpp', '-o', 'main'], cwd: temp_dir, stderr: 'piped' });
+        const gpp_proc = gpp_cmd.spawn();
+        const gpp_out = await gpp_proc.output();
+        if (!gpp_out.success) {
+          error = decoder.decode(gpp_out.stderr);
           return { output, error };
         }
-        cmd = [`${tempDir}/main`];
+        cmd = [`${temp_dir}/main`];
         break;
       }
       case 'C': {
-        file = `${tempDir}/main.c`;
+        file = `${temp_dir}/main.c`;
         await Deno.writeTextFile(file, code);
-        const gccCmd = new Deno.Command('gcc', { args: ['main.c', '-o', 'main'], cwd: tempDir, stderr: 'piped' });
-        const gccProc = gccCmd.spawn();
-        const gccOut = await gccProc.output();
-        if (!gccOut.success) {
-          error = decoder.decode(gccOut.stderr);
+        const gcc_cmd = new Deno.Command('gcc', { args: ['main.c', '-o', 'main'], cwd: temp_dir, stderr: 'piped' });
+        const gcc_proc = gcc_cmd.spawn();
+        const gcc_out = await gcc_proc.output();
+        if (!gcc_out.success) {
+          error = decoder.decode(gcc_out.stderr);
           return { output, error };
         }
-        cmd = [`${tempDir}/main`];
+        cmd = [`${temp_dir}/main`];
         break;
       }
       default: {
@@ -332,85 +305,85 @@ async function runCode(lang: string, code: string, input: string): Promise<{ out
         return { output, error };
       }
     }
-
-    const procCmd = new Deno.Command(cmd[0], { args: cmd.slice(1), cwd: tempDir, stdin: 'piped', stdout: 'piped', stderr: 'piped' });
-    const proc = procCmd.spawn();
-
+    const proc_cmd = new Deno.Command(cmd[0], { args: cmd.slice(1), cwd: temp_dir, stdin: 'piped', stdout: 'piped', stderr: 'piped' });
+    const proc = proc_cmd.spawn();
     const writer = proc.stdin.getWriter();
     await writer.write(encoder.encode(input));
     await writer.close();
-
-    const procOut = await proc.output();
-    if (!procOut.success) {
-      error = decoder.decode(procOut.stderr);
+    const proc_out = await proc.output();
+    if (!proc_out.success) {
+      error = decoder.decode(proc_out.stderr);
     } else {
-      output = decoder.decode(procOut.stdout);
+      output = decoder.decode(proc_out.stdout);
     }
   } catch (e) {
     error = e.message;
   } finally {
-    if (tempDir) await Deno.remove(tempDir, { recursive: true }).catch(() => {});
+    if (temp_dir) await Deno.remove(temp_dir, { recursive: true }).catch(() => {});
   }
   return { output, error };
 }
 
-function normalize(str: string): string {
+/** Normalize line endings */
+function normalize(str) {
   return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
-function diffHtml(expected: string, actual: string): string {
-  const expNorm = normalize(expected);
-  const actNorm = normalize(actual);
-  const expLines = expNorm.split('\n');
-  const actLines = actNorm.split('\n');
+/** Generate HTML for output display with differences highlighted */
+function output_html(expected, actual) {
+  const exp_norm = normalize(expected);
+  const act_norm = normalize(actual);
+  const exp_lines = exp_norm.split('\n');
+  const act_lines = act_norm.split('\n');
   let html = '';
-  const maxLen = Math.max(expLines.length, actLines.length);
-  for (let i = 0; i < maxLen; i++) {
-    const exp = expLines[i] ?? '';
-    const act = actLines[i] ?? '';
+  const max_len = Math.max(exp_lines.length, act_lines.length);
+  for (let i = 0; i < max_len; i++) {
+    const exp = exp_lines[i] ?? '';
+    const act = act_lines[i] ?? '';
     if (exp === act) {
       html += `${act}<br>`;
     } else {
-      let lineHtml = '';
-      const lineMax = Math.max(exp.length, act.length);
-      for (let j = 0; j < lineMax; j++) {
+      let line_html = '';
+      const line_max = Math.max(exp.length, act.length);
+      for (let j = 0; j < line_max; j++) {
         if (exp[j] === act[j]) {
-          lineHtml += act[j] ?? ' ';
+          line_html += act[j] ?? ' ';
         } else {
-          lineHtml += `<span class="diff-error">${act[j] ?? ' '}</span>`;
+          line_html += `<span class="diff-error">${act[j] ?? ' '}</span>`;
         }
       }
-      html += `${lineHtml}<br>`;
+      html += `${line_html}<br>`;
     }
   }
   return `<pre style="margin:0;">${html}</pre>`;
 }
 
-function handleMessage(ws: WebSocket, data: string) {
+/** Handle WebSocket messages */
+function handle_message(ws, data) {
   const msg = JSON.parse(data);
   const name = connections.get(ws);
   switch (msg.type) {
     case 'apply': {
-      if (phase !== 'registration') {
+      if (phase !== 'start') {
         ws.send(JSON.stringify({ type: 'error', msg: 'Registration closed' }));
         return;
       }
       pending.push({ name: msg.name, lang: msg.lang, ws });
-      processNextPending();
+      process_next_pending();
       break;
     }
     case 'reconnect': {
-      if (participants.has(msg.name) && participants.get(msg.name)!.accepted) {
+      if (participants.has(msg.name) && participants.get(msg.name).accepted) {
         connections.set(ws, msg.name);
         ws.send(JSON.stringify({
           type: 'status',
           phase,
           accepted: true,
-          lang: participants.get(msg.name)!.lang,
-          startTime: startTime?.getTime() ?? null,
-          endTime: endTime?.getTime() ?? null,
-          scheduledStart: scheduledStart?.getTime() ?? null,
-          totalPossible,
+          lang: participants.get(msg.name).lang,
+          time_start: time_start?.getTime() ?? null,
+          time_end: time_end?.getTime() ?? null,
+          scheduled_start: scheduled_start?.getTime() ?? null,
+          total_points,
         }));
       } else {
         ws.send(JSON.stringify({ type: 'not_registered' }));
@@ -420,20 +393,20 @@ function handleMessage(ws: WebSocket, data: string) {
     case 'test': {
       if (!name || phase !== 'ongoing') return;
       (async () => {
-        const p = participants.get(name)!;
+        const p = participants.get(name);
         const ch = challenges[msg.problem];
-        const tc = ch.testcases[msg.case];
-        const { output, error } = await runCode(p.lang, msg.code, tc.input);
+        const tc = ch.test[msg.case];
+        const { output, error } = await run_code(p.lang, msg.code, tc.input);
         const actual = normalize(output || '').trim();
-        const exp = normalize(tc.expected).trim();
+        const exp = normalize(tc.output).trim();
         const passed = !error && actual === exp;
-        const diff = passed ? '' : diffHtml(tc.expected, output || '');
+        let display = error ? `<pre style="margin:0;color:red;">${error}</pre>` : output_html(tc.output, output || '');
         ws.send(JSON.stringify({
           type: 'test_result',
           problem: msg.problem,
-          testcase: msg.case,
+          case: msg.case,
           passed,
-          diff: diff || error,
+          display,
         }));
       })();
       break;
@@ -441,79 +414,102 @@ function handleMessage(ws: WebSocket, data: string) {
     case 'submit': {
       if (!name || phase !== 'ongoing') return;
       (async () => {
-        const p = participants.get(name)!;
+        const p = participants.get(name);
         const ch = challenges[msg.problem];
-        const passedArr: boolean[] = [];
-        const diffs: string[] = [];
-        let currentScore = 0;
-        for (const tc of ch.testcases) {
-          const { output, error } = await runCode(p.lang, msg.code, tc.input);
+        const passed_arr = [];
+        const displays = [];
+        let current_score = 0;
+        for (const tc of ch.test) {
+          const { output, error } = await run_code(p.lang, msg.code, tc.input);
           const actual = normalize(output || '').trim();
-          const exp = normalize(tc.expected).trim();
+          const exp = normalize(tc.output).trim();
           const passed = !error && actual === exp;
-          passedArr.push(passed);
-          diffs.push(passed ? '' : diffHtml(tc.expected, output || ''));
-          if (passed) currentScore += tc.points;
+          passed_arr.push(passed);
+          let display = error ? `<pre style="margin:0;color:red;">${error}</pre>` : output_html(tc.output, output || '');
+          displays.push(display);
+          if (passed) current_score += tc.points;
         }
-        const ps = p.problemScores[msg.problem];
-        ps.currentScore = currentScore;
-        if (currentScore > ps.maxScore) {
-          ps.maxScore = currentScore;
-          ps.achieveTime = new Date();
-          const newTotalMax = p.problemScores.reduce((sum, score) => sum + score.maxScore, 0);
-          if (newTotalMax > p.totalMax) {
-            p.totalMax = newTotalMax;
-            p.totalAchieveTime = new Date();
+        const ps = p.problem_scores[msg.problem];
+        ps.current_score = current_score;
+        if (current_score > ps.max_score) {
+          ps.max_score = current_score;
+          ps.achieve_time = new Date();
+          const new_total_max = p.problem_scores.reduce((sum, score) => sum + score.max_score, 0);
+          if (new_total_max > p.total_max) {
+            p.total_max = new_total_max;
+            p.total_achieve_time = new Date();
           }
         }
-        p.totalCurrent = p.problemScores.reduce((sum, score) => sum + score.currentScore, 0);
+        p.total_current = p.problem_scores.reduce((sum, score) => sum + score.current_score, 0);
         ws.send(JSON.stringify({
           type: 'submit_result',
           problem: msg.problem,
-          passed: passedArr,
-          diffs,
-          currentScore: ps.currentScore,
-          maxScore: ps.maxScore,
-          totalCurrent: p.totalCurrent,
-          totalPossible,
+          passed: passed_arr,
+          displays,
+          current_score: ps.current_score,
+          max_score: ps.max_score,
+          total_current: p.total_current,
+          total_points,
         }));
+        broadcast_leaderboard();
       })();
       break;
     }
     case 'get_leaderboard': {
-      const lb: Record<string, { name: string; points: number }[]> = {};
-      ['Python', 'Java', 'C++', 'C'].forEach(lang => {
-        lb[lang] = Array.from(participants.values())
-          .filter(p => p.lang === lang && p.accepted)
-          .sort((a, b) => b.totalMax - a.totalMax || (a.totalAchieveTime?.getTime() ?? Infinity) - (b.totalAchieveTime?.getTime() ?? Infinity))
-          .map(p => ({ name: p.name, points: p.totalMax }));
-      });
-      ws.send(JSON.stringify({ type: 'leaderboard', data: lb }));
+      ws.send(JSON.stringify({ type: 'leaderboard', data: get_leaderboard() }));
       break;
     }
   }
 }
 
-const clientChallenges = JSON.stringify(challenges.map(c => ({
+/** Get current leaderboard data */
+function get_leaderboard() {
+  const lb = {};
+  ['Python', 'Java', 'C++', 'C'].forEach(lang => {
+    lb[lang] = Array.from(participants.values())
+      .filter(p => p.lang === lang && p.accepted)
+      .sort((a, b) => b.total_max - a.total_max || (a.total_achieve_time?.getTime() ?? Infinity) - (b.total_achieve_time?.getTime() ?? Infinity))
+      .map(p => ({ name: p.name, points: p.total_max }));
+  });
+  return lb;
+}
+
+/** Broadcast leaderboard to all */
+function broadcast_leaderboard() {
+  broadcast({ type: 'leaderboard', data: get_leaderboard() });
+}
+
+/** Client-side challenges data without test cases */
+const client_challenges = JSON.stringify(challenges.map(c => ({
   name: c.name,
-  statement: c.statement,
-  numTestcases: c.testcases.length,
+  info: c.info,
+  num_testcases: c.test.length,
 })));
 
-Deno.serve({ port: 80 }, (req: Request) => {
+// #endregion
+
+/** Interval for time checks */
+setInterval(() => {
+  const now = new Date();
+  if (scheduled_start && now >= scheduled_start) start_competition();
+  if (phase === 'ongoing' && time_end && now > time_end) end_competition();
+}, 1000);
+
+/** Serve the application */
+Deno.serve({ port: 80 }, (req) => {
   if (req.headers.get('upgrade') === 'websocket') {
     const { socket, response } = Deno.upgradeWebSocket(req);
     socket.onopen = () => {
       socket.send(JSON.stringify({
         type: 'status',
         phase,
-        startTime: startTime?.getTime() ?? null,
-        endTime: endTime?.getTime() ?? null,
-        scheduledStart: scheduledStart?.getTime() ?? null,
-        totalPossible,
+        time_start: time_start?.getTime() ?? null,
+        time_end: time_end?.getTime() ?? null,
+        scheduled_start: scheduled_start?.getTime() ?? null,
+        total_points,
       }));
     };
-    socket.onmessage = (e) => handleMessage(socket, e.data);
+    socket.onmessage = (e) => handle_message(socket, e.data);
     socket.onclose = () => connections.delete(socket);
     socket.onerror = (e) => console.error('WS error:', e);
     return response;
@@ -525,6 +521,12 @@ Deno.serve({ port: 80 }, (req: Request) => {
     <html>
       <head>
         <title>Coder's Arena</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/default.min.css">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/languages/python.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/languages/java.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/languages/cpp.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/languages/c.min.js"></script>
         <style>
           :focus {outline:none}
           html {height:100%; background-color: black; color: white;}
@@ -572,14 +574,42 @@ Deno.serve({ port: 80 }, (req: Request) => {
             padding: ${0.2 * u}px;
             overflow: auto;
           }
-          #code {
+          #code-wrapper {
             grid-area:3/3;
-            font: ${0.3 * u}px 'Courier New', monospace;
+            position: relative;
             background-color: #333;
-            color: white;
+          }
+          #code {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            font: ${0.3 * u}px 'Courier New', monospace;
+            color: transparent;
+            background: transparent;
+            caret-color: white;
             border: none;
             padding: ${0.2 * u}px;
             resize: none;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow: auto;
+            z-index: 1;
+          }
+          #code-highlight {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            font: ${0.3 * u}px 'Courier New', monospace;
+            padding: ${0.2 * u}px;
+            pointer-events: none;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow: hidden;
+            z-index: 0;
           }
           #result {
             display: grid;
@@ -690,7 +720,10 @@ Deno.serve({ port: 80 }, (req: Request) => {
         <!-- Problem Statement -->
         <div id="info"></div>
         <!-- Code -->
-        <textarea id="code" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea>
+        <div id="code-wrapper">
+          <textarea id="code" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea>
+          <pre id="code-highlight"><code></code></pre>
+        </div>
         <!-- Running -->
         <div id="result">
           <div id="cases"></div>
@@ -702,7 +735,7 @@ Deno.serve({ port: 80 }, (req: Request) => {
           </div>
         </div>
         <!-- Score -->
-        <div id="score">Total Current Score: 0</div>
+        <div id="score">Total Current Score: 0 / ${total_points}</div>
         <!-- Time limit -->
         <div id="time">Waiting for start</div>
         <!-- Registering -->
@@ -719,6 +752,7 @@ Deno.serve({ port: 80 }, (req: Request) => {
           </select>
           <button id="apply-btn">Apply!</button>
           <p id="waiting-text">Okay, you're registered! Wait for the competition to start.</p>
+          <button id="spectate-btn">Spectate</button>
         </div>
         <!-- Waiting -->
         <div id="wait">
@@ -749,90 +783,91 @@ Deno.serve({ port: 80 }, (req: Request) => {
         </div>
         <script>
           const unit = ${unit};
-          const challenges = ${clientChallenges};
+          const challenges = ${client_challenges};
           let ws;
-          let currentProblem = 0;
-          let currentCase = 0;
-          let passed = challenges.map(c => Array(c.numTestcases).fill(null));
-          let diffs = challenges.map(c => Array(c.numTestcases).fill(''));
+          let current_problem = 0;
+          let current_case = 0;
+          let passed = challenges.map(c => Array(c.num_testcases).fill(null));
+          let displays = challenges.map(c => Array(c.num_testcases).fill(''));
           let name = localStorage.getItem('name');
           let lang = localStorage.getItem('lang');
           let accepted = false;
-          let phase = 'registration';
-          let startTime = null;
-          let endTime = null;
-          let scheduledStart = null;
-          let timerInterval = null;
-          let totalCurrent = 0;
-          let totalPossible = 0;
+          let phase = 'start';
+          let time_start = null;
+          let time_end = null;
+          let scheduled_start = null;
+          let timer_interval = null;
+          let total_current = 0;
+          let total_points = 0;
+          let hljs_lang = 'plaintext';
+          let poll_interval = null;
 
           const $ = id => document.getElementById(id);
           const home = $('home');
           const wait = $('wait');
           const over = $('over');
           const score = $('score');
-          const timeDiv = $('time');
-          const overH1 = $('over-h1');
-          const nameInput = $('name-input');
-          const langSelect = $('lang-select');
-          const applyBtn = $('apply-btn');
-          const waitingText = $('waiting-text');
-          const testBtn = $('test-btn');
-          const submitBtn = $('submit-btn');
-          const finishBtn = $('finish-btn');
-          const goBackBtn = $('go-back-btn');
-          const refreshLb = $('refresh-lb');
+          const time_div = $('time');
+          const over_h1 = $('over-h1');
+          const name_input = $('name-input');
+          const lang_select = $('lang-select');
+          const apply_btn = $('apply-btn');
+          const waiting_text = $('waiting-text');
+          const spectate_btn = $('spectate-btn');
+          const test_btn = $('test-btn');
+          const submit_btn = $('submit-btn');
+          const finish_btn = $('finish-btn');
+          const go_back_btn = $('go-back-btn');
+          const refresh_lb = $('refresh-lb');
           const info = $('info');
           const code = $('code');
+          const code_highlight = $('code-highlight').querySelector('code');
           const match = $('match');
-          const casesDiv = $('cases');
+          const cases_div = $('cases');
           const tabs = $('tabs');
-          const arenaElements = [tabs, info, code, $('result'), $('div-l'), $('div-r')];
+          const arena_elements = [tabs, info, $('code-wrapper'), $('result'), $('div-l'), $('div-r')];
 
-          let leftFr = 1, codeFr = 2, resultFr = 1;
+          let left_fr = 1, code_fr = 2, result_fr = 1;
           const body = document.body;
-          function updateGrid() {
-            body.style.gridTemplateColumns = \`\${leftFr}fr \${0.2 * unit}px \${codeFr}fr \${0.2 * unit}px \${resultFr}fr\`;
+          function update_grid() {
+            body.style.gridTemplateColumns = \`\${left_fr}fr \${0.2 * unit}px \${code_fr}fr \${0.2 * unit}px \${result_fr}fr\`;
           }
-          updateGrid();
+          update_grid();
 
-          function makeDraggable(div, getLeft, getRight, setLeft, setRight) {
+          function make_draggable(div, is_left) {
             div.addEventListener('mousedown', (e) => {
               e.preventDefault();
-              const startX = e.clientX;
-              const startLeft = getLeft();
-              const startRight = getRight();
-              const scale = 200;
+              const start_x = e.clientX;
+              const start_left = left_fr;
+              const start_code = code_fr;
+              const start_result = result_fr;
+              const container_width = body.getBoundingClientRect().width - 2 * (0.2 * unit); // subtract dividers
+              const total_fr = left_fr + code_fr + result_fr;
+              const pixel_per_fr = container_width / total_fr;
               function move(e) {
-                const delta = (e.clientX - startX) / scale;
-                setLeft(Math.max(0.1, startLeft + delta));
-                setRight(Math.max(0.1, startRight - delta));
-                updateGrid();
+                const pixel_delta = e.clientX - start_x;
+                const fr_delta = pixel_delta / pixel_per_fr;
+                if (is_left) {
+                  left_fr = Math.max(0.1, start_left + fr_delta);
+                  code_fr = Math.max(0.1, start_code - fr_delta);
+                } else {
+                  code_fr = Math.max(0.1, start_code + fr_delta);
+                  result_fr = Math.max(0.1, start_result - fr_delta);
+                }
+                update_grid();
               }
               document.addEventListener('mousemove', move);
               document.addEventListener('mouseup', () => document.removeEventListener('mousemove', move), { once: true });
             });
           }
 
-          makeDraggable(
-            $('div-l'),
-            () => leftFr,
-            () => codeFr,
-            (v) => leftFr = v,
-            (v) => codeFr = v
-          );
-          makeDraggable(
-            $('div-r'),
-            () => codeFr,
-            () => resultFr,
-            (v) => codeFr = v,
-            (v) => resultFr = v
-          );
+          make_draggable($('div-l'), true);
+          make_draggable($('div-r'), false);
 
           function connect() {
             ws = new WebSocket('ws://' + location.host);
             ws.onopen = () => {
-              timeDiv.textContent = 'Connected';
+              time_div.textContent = 'Connected';
               if (name) ws.send(JSON.stringify({ type: 'reconnect', name }));
             };
             ws.onmessage = (e) => {
@@ -841,62 +876,64 @@ Deno.serve({ port: 80 }, (req: Request) => {
                 case 'status':
                 case 'phase': {
                   phase = msg.phase;
-                  startTime = msg.startTime ?? startTime;
-                  endTime = msg.endTime ?? endTime;
-                  scheduledStart = msg.scheduledStart ?? scheduledStart;
-                  totalPossible = msg.totalPossible ?? totalPossible;
+                  time_start = msg.time_start ?? time_start;
+                  time_end = msg.time_end ?? time_end;
+                  scheduled_start = msg.scheduled_start ?? scheduled_start;
+                  total_points = msg.total_points ?? total_points;
                   if (msg.accepted) {
                     accepted = true;
                     lang = msg.lang;
+                    hljs_lang = {Python: 'python', Java: 'java', 'C++': 'cpp', C: 'c'}[lang] || 'plaintext';
                   }
-                  updateUI();
+                  update_ui();
                   break;
                 }
                 case 'time_update': {
-                  startTime = msg.startTime ?? startTime;
-                  endTime = msg.endTime ?? endTime;
-                  scheduledStart = msg.scheduledStart ?? scheduledStart;
-                  updateUI();
+                  time_start = msg.time_start ?? time_start;
+                  time_end = msg.time_end ?? time_end;
+                  scheduled_start = msg.scheduled_start ?? scheduled_start;
+                  update_ui();
                   break;
                 }
                 case 'accepted': {
                   accepted = true;
-                  name = nameInput.value;
-                  lang = langSelect.value;
+                  name = name_input.value;
+                  lang = lang_select.value;
+                  hljs_lang = {Python: 'python', Java: 'java', 'C++': 'cpp', C: 'c'}[lang] || 'plaintext';
                   localStorage.setItem('name', name);
                   localStorage.setItem('lang', lang);
-                  updateUI();
+                  update_ui();
                   break;
                 }
                 case 'declined': {
                   alert('Application declined.');
-                  applyBtn.textContent = 'Apply!';
-                  applyBtn.disabled = false;
+                  apply_btn.textContent = 'Apply!';
+                  apply_btn.disabled = false;
                   break;
                 }
                 case 'test_result': {
-                  passed[msg.problem][msg.testcase] = msg.passed;
-                  diffs[msg.problem][msg.testcase] = msg.diff || msg.error || '';
-                  if (currentProblem === msg.problem) updateCases();
-                  if (currentCase === msg.testcase && currentProblem === msg.problem) updateMatch();
+                  passed[msg.problem][msg.case] = msg.passed;
+                  displays[msg.problem][msg.case] = msg.display;
+                  if (current_problem === msg.problem) update_cases();
+                  if (current_case === msg.case && current_problem === msg.problem) update_match();
                   break;
                 }
                 case 'submit_result': {
                   msg.passed.forEach((p, i) => {
                     passed[msg.problem][i] = p;
-                    diffs[msg.problem][i] = msg.diffs[i];
+                    displays[msg.problem][i] = msg.displays[i];
                   });
-                  totalCurrent = msg.totalCurrent;
-                  totalPossible = msg.totalPossible;
-                  score.textContent = \`Total Current Score: \${totalCurrent} / \${totalPossible}\`;
-                  if (currentProblem === msg.problem) {
-                    updateCases();
-                    updateMatch();
+                  total_current = msg.total_current;
+                  total_points = msg.total_points;
+                  score.textContent = \`Total Current Score: \${total_current} / \${total_points}\`;
+                  if (current_problem === msg.problem) {
+                    update_cases();
+                    update_match();
                   }
                   break;
                 }
                 case 'leaderboard': {
-                  populateLeaderboard(msg.data);
+                  populate_leaderboard(msg.data);
                   break;
                 }
                 case 'error': {
@@ -906,7 +943,7 @@ Deno.serve({ port: 80 }, (req: Request) => {
               }
             };
             ws.onclose = () => {
-              timeDiv.textContent = 'Disconnected...';
+              time_div.textContent = 'Disconnected...';
               setTimeout(connect, 5000);
             };
             ws.onerror = () => {
@@ -914,105 +951,114 @@ Deno.serve({ port: 80 }, (req: Request) => {
             };
           }
 
-          function updateUI() {
+          function update_ui() {
             home.style.display = 'none';
             wait.style.display = 'none';
             over.style.display = 'none';
             score.style.display = 'none';
-            arenaElements.forEach(el => el.style.display = '');
-            if (phase === 'registration') {
-              if (scheduledStart) {
-                timeDiv.textContent = \`Competition starts at \${new Date(scheduledStart).toLocaleTimeString()}\`;
+            arena_elements.forEach(el => el.style.display = '');
+            spectate_btn.style.display = phase === 'start' && !accepted ? '' : 'none';
+            if (phase === 'start') {
+              if (scheduled_start) {
+                time_div.textContent = \`Competition starts at \${new Date(scheduled_start).toLocaleTimeString()}\`;
               } else {
-                timeDiv.textContent = 'Waiting for start';
+                time_div.textContent = 'Waiting for start';
               }
               if (accepted) {
                 home.style.display = 'block';
-                nameInput.style.display = 'none';
-                langSelect.style.display = 'none';
-                applyBtn.style.display = 'none';
-                waitingText.style.display = 'block';
-                arenaElements.forEach(el => el.style.display = 'none');
+                name_input.style.display = 'none';
+                lang_select.style.display = 'none';
+                apply_btn.style.display = 'none';
+                waiting_text.style.display = 'block';
+                arena_elements.forEach(el => el.style.display = 'none');
               } else {
                 home.style.display = 'block';
-                nameInput.style.display = '';
-                langSelect.style.display = '';
-                applyBtn.style.display = '';
-                waitingText.style.display = 'none';
-                arenaElements.forEach(el => el.style.display = 'none');
+                name_input.style.display = '';
+                lang_select.style.display = '';
+                apply_btn.style.display = '';
+                waiting_text.style.display = 'none';
+                arena_elements.forEach(el => el.style.display = 'none');
               }
             } else if (phase === 'ongoing') {
-              startTimer();
+              start_timer();
               if (accepted) {
                 home.style.display = 'none';
                 score.style.display = '';
               } else {
                 over.style.display = 'block';
-                overH1.textContent = 'Competition Ongoing';
-                arenaElements.forEach(el => el.style.display = 'none');
+                over_h1.textContent = 'Competition Ongoing';
+                arena_elements.forEach(el => el.style.display = 'none');
                 ws.send(JSON.stringify({ type: 'get_leaderboard' }));
+                if (poll_interval) clearInterval(poll_interval);
+                poll_interval = setInterval(() => ws.send(JSON.stringify({ type: 'get_leaderboard' })), 10000);
               }
             } else if (phase === 'ended') {
               over.style.display = 'block';
-              overH1.textContent = 'The Coder\\'s Arena is finished!';
-              arenaElements.forEach(el => el.style.display = 'none');
-              timeDiv.textContent = 'Competition Over';
+              over_h1.textContent = 'The Coder\\'s Arena is finished!';
+              arena_elements.forEach(el => el.style.display = 'none');
+              time_div.textContent = 'Competition Over';
               ws.send(JSON.stringify({ type: 'get_leaderboard' }));
+              if (poll_interval) clearInterval(poll_interval);
             }
           }
 
-          function startTimer() {
-            if (timerInterval) clearInterval(timerInterval);
-            timerInterval = setInterval(() => {
-              if (endTime) {
+          function start_timer() {
+            if (timer_interval) clearInterval(timer_interval);
+            timer_interval = setInterval(() => {
+              if (time_end) {
                 const now = Date.now();
-                let remaining = endTime - now;
+                let remaining = time_end - now;
                 if (remaining <= 0) {
                   remaining = 0;
-                  clearInterval(timerInterval);
+                  clearInterval(timer_interval);
                   phase = 'ended';
-                  updateUI();
+                  update_ui();
                 }
                 const hours = Math.floor(remaining / 3600000);
                 const mins = Math.floor((remaining % 3600000) / 60000);
                 const secs = Math.floor((remaining % 60000) / 1000);
-                timeDiv.textContent = \`\${hours.toString().padStart(2, '0')}:\${mins.toString().padStart(2, '0')}:\${secs.toString().padStart(2, '0')} left\`;
+                time_div.textContent = \`\${hours.toString().padStart(2, '0')}:\${mins.toString().padStart(2, '0')}:\${secs.toString().padStart(2, '0')} left\`;
               }
             }, 1000);
           }
 
-          function selectProblem(index) {
-            currentProblem = index;
-            info.innerHTML = challenges[index].statement;
+          function select_problem(index) {
+            current_problem = index;
+            info.innerHTML = challenges[index].info;
             code.value = localStorage.getItem(\`code_\${index}\`) || '';
-            updateCases();
-            updateMatch();
+            update_highlight();
+            update_cases();
+            update_match();
             tabs.querySelectorAll('button').forEach((b, i) => b.style.backgroundColor = i === index ? '#990000' : 'red');
           }
 
-          function updateCases() {
-            casesDiv.innerHTML = '';
-            for (let i = 0; i < challenges[currentProblem].numTestcases; i++) {
+          function update_cases() {
+            cases_div.innerHTML = '';
+            for (let i = 0; i < challenges[current_problem].num_testcases; i++) {
               const btn = document.createElement('button');
               btn.textContent = i.toString().padStart(2, '0');
-              if (passed[currentProblem][i] === true) btn.classList.add('passed');
-              else if (passed[currentProblem][i] === false) btn.classList.add('failed');
+              if (passed[current_problem][i] === true) btn.classList.add('passed');
+              else if (passed[current_problem][i] === false) btn.classList.add('failed');
               btn.onclick = () => {
-                currentCase = i;
-                updateMatch();
+                current_case = i;
+                update_match();
               };
-              casesDiv.appendChild(btn);
+              cases_div.appendChild(btn);
             }
           }
 
-          function updateMatch() {
-            match.innerHTML = diffs[currentProblem][currentCase] || '';
+          function update_match() {
+            match.innerHTML = displays[current_problem][current_case] || '';
           }
 
-          function populateLeaderboard(data) {
+          function update_highlight() {
+            code_highlight.innerHTML = hljs.highlight(code.value, { language: hljs_lang }).value;
+          }
+
+          function populate_leaderboard(data) {
             const langs = { Python: 'lb-python', Java: 'lb-java', 'C++': 'lb-cpp', C: 'lb-c' };
-            for (const [lang, tableId] of Object.entries(langs)) {
-              const table = $(tableId);
+            for (const [lang, table_id] of Object.entries(langs)) {
+              const table = $(table_id);
               table.innerHTML = '<tr><th>Name</th><th>Points</th></tr>';
               (data[lang] || []).forEach(entry => {
                 const tr = document.createElement('tr');
@@ -1022,56 +1068,68 @@ Deno.serve({ port: 80 }, (req: Request) => {
             }
           }
 
-          applyBtn.onclick = () => {
-            const n = nameInput.value.trim();
-            const l = langSelect.value;
+          apply_btn.onclick = () => {
+            const n = name_input.value.trim();
+            const l = lang_select.value;
             if (!n) return alert('Enter name');
             ws.send(JSON.stringify({ type: 'apply', name: n, lang: l }));
-            applyBtn.textContent = 'Waiting...';
-            applyBtn.disabled = true;
+            apply_btn.textContent = 'Waiting...';
+            apply_btn.disabled = true;
           };
 
-          testBtn.onclick = () => {
+          spectate_btn.onclick = () => {
+            over.style.display = 'block';
+            over_h1.textContent = 'Competition Not Started Yet';
+            home.style.display = 'none';
+            ws.send(JSON.stringify({ type: 'get_leaderboard' }));
+          };
+
+          test_btn.onclick = () => {
             if (phase !== 'ongoing' || !accepted) return;
-            ws.send(JSON.stringify({ type: 'test', problem: currentProblem, case: currentCase, code: code.value }));
+            ws.send(JSON.stringify({ type: 'test', problem: current_problem, case: current_case, code: code.value }));
           };
 
-          submitBtn.onclick = () => {
+          submit_btn.onclick = () => {
             if (phase !== 'ongoing' || !accepted) return;
-            ws.send(JSON.stringify({ type: 'submit', problem: currentProblem, code: code.value }));
+            ws.send(JSON.stringify({ type: 'submit', problem: current_problem, code: code.value }));
           };
 
-          finishBtn.onclick = () => {
+          finish_btn.onclick = () => {
             wait.style.display = 'block';
-            arenaElements.forEach(el => el.style.display = 'none');
+            arena_elements.forEach(el => el.style.display = 'none');
             score.style.display = 'none';
           };
 
-          goBackBtn.onclick = () => {
+          go_back_btn.onclick = () => {
             wait.style.display = 'none';
-            arenaElements.forEach(el => el.style.display = '');
+            arena_elements.forEach(el => el.style.display = '');
             if (phase === 'ongoing' && accepted) score.style.display = '';
           };
 
-          refreshLb.onclick = () => {
+          refresh_lb.onclick = () => {
             ws.send(JSON.stringify({ type: 'get_leaderboard' }));
           };
 
           code.addEventListener('input', () => {
-            localStorage.setItem(\`code_\${currentProblem}\`, code.value);
+            localStorage.setItem(\`code_\${current_problem}\`, code.value);
+            update_highlight();
+          });
+          code.addEventListener('scroll', () => {
+            code_highlight.parentElement.scrollTop = code.scrollTop;
+            code_highlight.parentElement.scrollLeft = code.scrollLeft;
           });
 
           // Init tabs
           challenges.forEach((ch, i) => {
             const btn = document.createElement('button');
             btn.textContent = ch.name;
-            btn.onclick = () => selectProblem(i);
+            btn.onclick = () => select_problem(i);
             tabs.appendChild(btn);
           });
-          selectProblem(0);
+          select_problem(0);
 
           connect();
-          updateUI();
+          update_ui();
         </script>
       </body>
     </html>
@@ -1080,4 +1138,4 @@ Deno.serve({ port: 80 }, (req: Request) => {
   });
 });
 
-cliInput();
+cli_input();

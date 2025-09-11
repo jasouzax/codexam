@@ -58,3 +58,108 @@ While everything is mostly working, here are some suggested fixes:
 - Use `{}` brackets inside of `switch` cases
 - The draggable `#div_l` and `#div_r` is too sensitive that when I draw my mouse right of it it moved faster then my mouse loosing contact with my mouse same with both
 - For current score, instead of just the current total score of the user display current score over total possible score so that the user can know how much more is left
+
+### Grok improve #3
+- Please put comments everywhere, minimize variables if possible (like limite interface type if not needed, or whatnot), this this style of code (Also use snake_case): *(Below code is just my incomplete attempt from rebasing/recoding your code into my style so dont copy 1 to 1, also readLine is deprecated)*
+    ```ts
+    import { TextLineStream } from "https://deno.land/std@0.224.0/streams/text_line_stream.ts";
+
+    // #region Configurations - Developer can modify
+    /** Unit of the interface in Pixels */
+    const unit = 50;
+    /** Challenges */
+    const challenges:{
+        /** Name of challenge */
+        name:string,
+        /** Problem statement */
+        info:string,
+        /** Testcases */
+        test:{
+            /** Points */
+            points:number,
+            /** Input */
+            input:string,
+            /** Output */
+            output:string
+        }[]
+    }[] = [
+    {
+        name: "FizzBuzz",
+        info: `<p>Write a program that reads an integer n from standard input and prints the numbers from 1 to n, each on a new line. For multiples of 3, print "Fizz" instead of the number. For multiples of 5, print "Buzz". For numbers that are multiples of both 3 and 5, print "FizzBuzz".</p>`,
+        test: [
+        { input: "5\n", output: "1\n2\nFizz\n4\nBuzz", points: 10 },
+        { input: "15\n", output: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz", points: 20 },
+        { input: "1\n", output: "1", points: 5 },
+        { input: "30\n", output: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz\n16\n17\nFizz\n19\nBuzz\nFizz\n22\n23\nFizz\nBuzz\n26\nFizz\n28\n29\nFizzBuzz", points: 30 },
+        ],
+    },
+    ];
+    // #endregion
+    // #region System variables - Modifed on runtime
+    /** Current phase of competition */
+    let phase:'start'|'ongoing'|'ended' = 'start';
+    /** Starting date of competition */
+    let time_start:null|Date = null;
+    /** Ending date of competition */
+    let time_end:null|Date = null;
+    /** Total possible points */
+    const total_points:number = challenges.reduce((sum, ch) => sum + ch.test.reduce((s, tc) => s + tc.points, 0), 0);
+    /** Participants */
+    const participants:Map<string,{
+        /** Name of participant */
+        name:string,
+        /** Langauge of participant */
+        lang:string,
+        /** Is accepted? */
+        accepted:boolean,
+
+        problemScores: {
+            maxScore: number;
+            currentScore: number;
+            achieveTime: Date | null;
+        }[];
+        totalMax: number;
+        totalCurrent: number;
+        totalAchieveTime: Date | null;
+    }> = new Map();
+    /** Websocket to participant */
+    const connections:Map<WebSocket, string> = new Map();
+    /** Pending participant applications */
+    const pending:{ name: string; lang: string; ws: WebSocket }[] = [];
+    // #endregion
+    // #region Action - Functions
+    async function cli_input() {
+    /** Admin commands */
+    const lines = Deno.stdin.readable
+        .pipeThrough(new TextDecoderStream())
+        .pipeThrough(new TextLineStream());
+    for await (const line of lines) {
+        const command = line.trim().toLowerCase();
+        if (pending.length) {
+            /** Current pending applicant */
+            const current = pending.shift()!;
+            if (command === 'y') {
+                /** Name already exists */
+                if (participants.has(current.name))
+                    current.ws.send(JSON.stringify({ type: 'declined', msg: 'Name already taken' }));
+                /** Record participant */
+                else {
+                    participants.set(current.name, {
+                        name: current.name,
+                        lang: current.lang,
+                        accepted: true,
+                        problemScores: challenges.map(() => ({ maxScore: 0, currentScore: 0, achieveTime: null })),
+                        totalMax: 0,
+                        totalCurrent: 0,
+                        totalAchieveTime: null,
+                    });
+                    connections.set(current.ws, current.name);
+                    current.ws.send(JSON.stringify({ type: 'accepted' }));
+                }
+    ```
+- Also even if the testcase is correct, still display in match but without any `span` indicating errors
+- Dragging still doesnt align with mouse
+- Change `overH1.textContent = 'The Coder\'s Arena is finished!';` to `overH1.textContent = 'The Coder\\'s Arena is finished!';` because your already in a string, cause originally it becomes `overH1.textContent = 'The Coder's Arena is finished!';` in client-side which is an error
+- Spectators not updated when participants gets points, even when `end` time is still ongoing and the score is not updated
+- Also add `spectate` button in `#home` to quickly spectate upcoming competitors
+- Is it possible to color 
