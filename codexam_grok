@@ -1,11 +1,54 @@
 #!/usr/bin/env -S deno run -A --watch
 import { TextLineStream } from "https://deno.land/std@0.224.0/streams/text_line_stream.ts";
 
+interface ProblemScore {
+  /** Maximum score achieved for the problem */
+  max_score: number;
+  /** Current submission score */
+  current_score: number;
+  /** Time when max score was achieved */
+  achieve_time: Date | null;
+}
+
+interface Participant {
+  /** Participant's name */
+  name: string;
+  /** Programming language chosen */
+  lang: string;
+  /** Whether the application was accepted */
+  accepted: boolean;
+  /** Scores for each problem */
+  problem_scores: Array<ProblemScore>;
+  /** Total maximum score achieved */
+  total_max: number;
+  /** Total current score from latest submissions */
+  total_current: number;
+  /** Time when total max score was achieved */
+  total_achieve_time: Date | null;
+}
+
+interface PendingApplicant {
+  name: string;
+  lang: string;
+  ws: WebSocket;
+}
+
+interface ChallengeTestCase {
+  input: string;
+  output: string;
+  points: number;
+}
+
+interface Challenge {
+  name: string;
+  info: string;
+  test: Array<ChallengeTestCase>;
+}
 // #region Configurations - Developer can modify
 /** Unit of the interface in Pixels */
-const unit = 50;
+const unit: number = 50;
 /** Challenges */
-const challenges = [
+const challenges: Array<Challenge> = [
   {
     name: "FizzBuzz",
     info: `<p>Write a program that reads an integer n from standard input and prints the numbers from 1 to n, each on a new line. For multiples of 3, print "Fizz" instead of the number. For multiples of 5, print "Buzz". For numbers that are multiples of both 3 and 5, print "FizzBuzz".</p>`,
@@ -58,40 +101,44 @@ const challenges = [
   },
 ];
 // #endregion
+const red: string = "\x1b[31m";
+const green: string = "\x1b[32m";
+const yellow: string = "\x1b[33m";
+const reset: string = "\x1b[0m";
+const encoder: TextEncoder = new TextEncoder();
+
 // #region System variables - Modifed on runtime
 /** Current phase of competition */
-let phase = 'start';
+let phase: 'start' | 'ongoing' | 'ended' = 'start';
 /** Starting date of competition */
-let time_start = null;
+let time_start: Date | null = null;
 /** Ending date of competition */
-let time_end = null;
+let time_end: Date | null = null;
 /** Scheduled start date */
-let scheduled_start = null;
+let scheduled_start: Date | null = null;
 /** Scheduled end date */
-let scheduled_end = null;
-/** Default duration in ms */
-const default_duration = 90 * 60 * 1000;
+let scheduled_end: Date | null = null;
 /** Total possible points */
-const total_points = challenges.reduce((sum, ch) => sum + ch.test.reduce((s, tc) => s + tc.points, 0), 0);
+const total_points: number = challenges.reduce((sum: number, ch: Challenge) => sum + ch.test.reduce((s: number, tc: ChallengeTestCase) => s + tc.points, 0), 0);
 /** Participants */
-const participants = new Map();
+const participants: Map<string, Participant> = new Map();
 /** Websocket to participant name */
-const connections = new Map();
+const connections: Map<WebSocket, string> = new Map();
 /** Pending participant applications */
-const pending = [];
+const pending: Array<PendingApplicant> = [];
 /** Current pending applicant being processed */
-let current_pending = null;
+let current_pending: PendingApplicant | null = null;
 // #endregion
 // #region Action - Functions
-/** Process next pending application */
-function process_next_pending() {
+/** Process the next pending applicant */
+function process_next_pending(): void {
   if (current_pending || pending.length === 0) return;
-  current_pending = pending.shift();
-  console.log(`New application: ${current_pending.name} (${current_pending.lang}). Accept? (y/n)`);
+  current_pending = pending.shift()!;
+  Deno.stdout.writeSync(encoder.encode(`${yellow}New application: ${current_pending.name} (${current_pending.lang}). Accept? (y/n)${reset} `));
 }
 
 /** Reset all participant scores */
-function reset_scores() {
+function reset_scores(): void {
   for (const p of participants.values()) {
     p.problem_scores = challenges.map(() => ({ max_score: 0, current_score: 0, achieve_time: null }));
     p.total_max = 0;
@@ -101,7 +148,7 @@ function reset_scores() {
 }
 
 /** Parse time string to Date */
-function parse_time(time_str) {
+function parse_time(time_str: string): Date | null {
   const [h, m] = time_str.split(':').map(Number);
   if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
   const now = new Date();
@@ -109,34 +156,43 @@ function parse_time(time_str) {
 }
 
 /** Start the competition */
-function start_competition() {
+function start_competition(): void {
   phase = 'ongoing';
   time_start = new Date();
-  time_end = new Date(time_start.getTime() + default_duration);
+  time_end = null;
   if (scheduled_end && scheduled_end > time_start) time_end = scheduled_end;
   scheduled_start = null;
   scheduled_end = null;
   broadcast({ type: 'phase', phase });
   broadcast_time();
-  console.log('Competition started.');
+  Deno.stdout.writeSync(encoder.encode(`${green}Competition started.${reset}\n`));
 }
 
 /** End the competition */
-function end_competition() {
+function end_competition(): void {
   phase = 'ended';
   scheduled_end = null;
   broadcast({ type: 'phase', phase });
-  console.log('Competition ended.');
+  Deno.stdout.writeSync(encoder.encode(`${green}Competition ended.${reset}\n`));
 }
 
 /** Broadcast message to all connections */
-function broadcast(msg) {
+function broadcast(msg:
+    {type: 'phase', phase:"start" | "ongoing" | "ended"} |
+    {type: 'time_update',time_start:number|null, time_end:number|null, scheduled_start:number|null} |
+    { type: 'leaderboard', data: {
+        [lang: string]: {
+            name: string;
+            points: number;
+        }[];
+    }}
+): void {
   const str = JSON.stringify(msg);
   for (const ws of connections.keys()) ws.send(str);
 }
 
 /** Broadcast time updates */
-function broadcast_time() {
+function broadcast_time(): void {
   broadcast({
     type: 'time_update',
     time_start: time_start?.getTime() ?? null,
@@ -146,7 +202,7 @@ function broadcast_time() {
 }
 
 /** Handle CLI inputs */
-async function cli_input() {
+async function cli_input(): Promise<void> {
   const readable = Deno.stdin.readable.pipeThrough(new TextDecoderStream()).pipeThrough(new TextLineStream());
   for await (const line of readable) {
     const trimmed = line.trim().toLowerCase();
@@ -174,7 +230,7 @@ async function cli_input() {
         current_pending = null;
         process_next_pending();
       } else {
-        console.log('Invalid input. Accept? (y/n)');
+        Deno.stdout.writeSync(encoder.encode(`${red}Invalid input.${reset} ${yellow}Accept? (y/n)${reset} `));
       }
     } else {
       const parts = trimmed.split(/\s+/);
@@ -185,7 +241,7 @@ async function cli_input() {
         if (parts.length > 1) {
           target_time = parse_time(parts[1]);
           if (!target_time) {
-            console.log('Invalid time format. Use HH:MM');
+            Deno.stdout.writeSync(encoder.encode(`${red}Invalid time format. Use HH:MM${reset}\n`));
             continue;
           }
         } else {
@@ -197,7 +253,7 @@ async function cli_input() {
           } else {
             scheduled_start = target_time;
             broadcast_time();
-            console.log(`Competition scheduled to start at ${target_time.toLocaleTimeString()}.`);
+            Deno.stdout.writeSync(encoder.encode(`${green}Competition scheduled to start at ${target_time.toLocaleTimeString()}.${reset}\n`));
           }
         } else if (phase === 'ongoing') {
           if (target_time > now) {
@@ -208,9 +264,9 @@ async function cli_input() {
             reset_scores();
             broadcast({ type: 'phase', phase });
             broadcast_time();
-            console.log(`Competition rescheduled to start at ${target_time.toLocaleTimeString()}. Scores reset.`);
+            Deno.stdout.writeSync(encoder.encode(`${green}Competition rescheduled to start at ${target_time.toLocaleTimeString()}. Scores reset.${reset}\n`));
           } else {
-            console.log('Cannot reschedule to past or present during ongoing.');
+            Deno.stdout.writeSync(encoder.encode(`${red}Cannot reschedule to past or present during ongoing.${reset}\n`));
           }
         }
       } else if (cmd === 'end' && (phase === 'start' || phase === 'ongoing')) {
@@ -218,7 +274,7 @@ async function cli_input() {
         if (parts.length > 1) {
           target_time = parse_time(parts[1]);
           if (!target_time) {
-            console.log('Invalid time format. Use HH:MM');
+            Deno.stdout.writeSync(encoder.encode(`${red}Invalid time format. Use HH:MM${reset}\n`));
             continue;
           }
         } else {
@@ -229,22 +285,22 @@ async function cli_input() {
         } else {
           if (phase === 'start') {
             scheduled_end = target_time;
-            console.log(`End scheduled at ${target_time.toLocaleTimeString()}.`);
+            Deno.stdout.writeSync(encoder.encode(`${green}End scheduled at ${target_time.toLocaleTimeString()}.${reset}\n`));
           } else {
             time_end = target_time;
             broadcast_time();
-            console.log(`End time updated to ${target_time.toLocaleTimeString()}.`);
+            Deno.stdout.writeSync(encoder.encode(`${green}End time updated to ${target_time.toLocaleTimeString()}.${reset}\n`));
           }
         }
       } else {
-        console.log('Unknown command or invalid phase.');
+        Deno.stdout.writeSync(encoder.encode(`${red}Unknown command or invalid phase.${reset}\n`));
       }
     }
   }
 }
 
 /** Run code in specified language */
-async function run_code(lang, code, input) {
+async function run_code(lang: string, code: string, input: string): Promise<{output: string, error: string}> {
   let output = '';
   let error = '';
   let temp_dir = '';
@@ -317,7 +373,7 @@ async function run_code(lang, code, input) {
       output = decoder.decode(proc_out.stdout);
     }
   } catch (e) {
-    error = e.message;
+    if (e instanceof Error) error = e.message;
   } finally {
     if (temp_dir) await Deno.remove(temp_dir, { recursive: true }).catch(() => {});
   }
@@ -325,12 +381,12 @@ async function run_code(lang, code, input) {
 }
 
 /** Normalize line endings */
-function normalize(str) {
+function normalize(str: string): string {
   return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 /** Generate HTML for output display with differences highlighted */
-function output_html(expected, actual) {
+function output_html(expected: string, actual: string): string {
   const exp_norm = normalize(expected);
   const act_norm = normalize(actual);
   const exp_lines = exp_norm.split('\n');
@@ -359,7 +415,7 @@ function output_html(expected, actual) {
 }
 
 /** Handle WebSocket messages */
-function handle_message(ws, data) {
+function handle_message(ws: WebSocket, data: string): void {
   const msg = JSON.parse(data);
   const name = connections.get(ws);
   switch (msg.type) {
@@ -373,13 +429,13 @@ function handle_message(ws, data) {
       break;
     }
     case 'reconnect': {
-      if (participants.has(msg.name) && participants.get(msg.name).accepted) {
+      if (participants.has(msg.name) && participants.get(msg.name)!.accepted) {
         connections.set(ws, msg.name);
         ws.send(JSON.stringify({
           type: 'status',
           phase,
           accepted: true,
-          lang: participants.get(msg.name).lang,
+          lang: participants.get(msg.name)!.lang,
           time_start: time_start?.getTime() ?? null,
           time_end: time_end?.getTime() ?? null,
           scheduled_start: scheduled_start?.getTime() ?? null,
@@ -393,14 +449,14 @@ function handle_message(ws, data) {
     case 'test': {
       if (!name || phase !== 'ongoing') return;
       (async () => {
-        const p = participants.get(name);
+        const p = participants.get(name)!;
         const ch = challenges[msg.problem];
         const tc = ch.test[msg.case];
         const { output, error } = await run_code(p.lang, msg.code, tc.input);
         const actual = normalize(output || '').trim();
         const exp = normalize(tc.output).trim();
         const passed = !error && actual === exp;
-        let display = error ? `<pre style="margin:0;color:red;">${error}</pre>` : output_html(tc.output, output || '');
+        const display = error ? `<pre style="margin:0;color:red;">${error}</pre>` : output_html(tc.output, output || '');
         ws.send(JSON.stringify({
           type: 'test_result',
           problem: msg.problem,
@@ -414,7 +470,7 @@ function handle_message(ws, data) {
     case 'submit': {
       if (!name || phase !== 'ongoing') return;
       (async () => {
-        const p = participants.get(name);
+        const p = participants.get(name)!;
         const ch = challenges[msg.problem];
         const passed_arr = [];
         const displays = [];
@@ -425,7 +481,7 @@ function handle_message(ws, data) {
           const exp = normalize(tc.output).trim();
           const passed = !error && actual === exp;
           passed_arr.push(passed);
-          let display = error ? `<pre style="margin:0;color:red;">${error}</pre>` : output_html(tc.output, output || '');
+          const display = error ? `<pre style="margin:0;color:red;">${error}</pre>` : output_html(tc.output, output || '');
           displays.push(display);
           if (passed) current_score += tc.points;
         }
@@ -464,7 +520,7 @@ function handle_message(ws, data) {
 
 /** Get current leaderboard data */
 function get_leaderboard() {
-  const lb = {};
+  const lb:{[lang:string]:{ name: string; points: number; }[]} = {};
   ['Python', 'Java', 'C++', 'C'].forEach(lang => {
     lb[lang] = Array.from(participants.values())
       .filter(p => p.lang === lang && p.accepted)
@@ -475,12 +531,12 @@ function get_leaderboard() {
 }
 
 /** Broadcast leaderboard to all */
-function broadcast_leaderboard() {
+function broadcast_leaderboard(): void {
   broadcast({ type: 'leaderboard', data: get_leaderboard() });
 }
 
 /** Client-side challenges data without test cases */
-const client_challenges = JSON.stringify(challenges.map(c => ({
+const client_challenges: string = JSON.stringify(challenges.map((c: Challenge) => ({
   name: c.name,
   info: c.info,
   num_testcases: c.test.length,
@@ -511,7 +567,7 @@ Deno.serve({ port: 80 }, (req) => {
     };
     socket.onmessage = (e) => handle_message(socket, e.data);
     socket.onclose = () => connections.delete(socket);
-    socket.onerror = (e) => console.error('WS error:', e);
+    socket.onerror = (e) => Deno.stdout.writeSync(encoder.encode(`${red}WS error: ${e}${reset}\n`));
     return response;
   }
 
@@ -543,6 +599,7 @@ Deno.serve({ port: 80 }, (req) => {
           #div-l {grid-area:3/2; cursor: col-resize;}
           #div-r {grid-area:3/4; cursor: col-resize;}
           #div-l,#div-r {
+            z-index: 2;
             background-color: #333;
           }
           #title {
@@ -782,25 +839,24 @@ Deno.serve({ port: 80 }, (req) => {
           <button id="refresh-lb">Refresh Leaderboard</button>
         </div>
         <script>
-          const unit = ${unit};
-          const challenges = ${client_challenges};
-          let ws;
-          let current_problem = 0;
-          let current_case = 0;
-          let passed = challenges.map(c => Array(c.num_testcases).fill(null));
-          let displays = challenges.map(c => Array(c.num_testcases).fill(''));
-          let name = localStorage.getItem('name');
-          let lang = localStorage.getItem('lang');
-          let accepted = false;
-          let phase = 'start';
-          let time_start = null;
-          let time_end = null;
-          let scheduled_start = null;
-          let timer_interval = null;
-          let total_current = 0;
-          let total_points = 0;
-          let hljs_lang = 'plaintext';
-          let poll_interval = null;
+          const unit = ${unit}; /** @type {Array<{name: string, info: string, num_testcases: number}>} */ const challenges = ${client_challenges};
+          /** @type {WebSocket} */ let ws;
+          let current_problem: number = 0;
+          let current_case: number = 0;
+          let passed: Array<Array<boolean | null>> = challenges.map(c => Array(c.num_testcases).fill(null));
+          let displays: Array<Array<string>> = challenges.map(c => Array(c.num_testcases).fill(''));
+          let name: string | null = localStorage.getItem('name');
+          let lang: string | null = localStorage.getItem('lang');
+          let accepted: boolean = false;
+          let phase: 'start' | 'ongoing' | 'ended' = 'start';
+          let time_start: number | null = null;
+          let time_end: number | null = null;
+          let scheduled_start: number | null = null;
+          let timer_interval: number | null = null;
+          let total_current: number = 0;
+          let total_points: number = 0;
+          let hljs_lang: string = 'plaintext';
+          let poll_interval: number | null = null;
 
           const $ = id => document.getElementById(id);
           const home = $('home');
@@ -907,11 +963,13 @@ Deno.serve({ port: 80 }, (req) => {
                 }
                 case 'declined': {
                   alert('Application declined.');
-                  apply_btn.textContent = 'Apply!';
+                  apply_btn.textContent = 'Declined, Apply again?';
                   apply_btn.disabled = false;
                   break;
                 }
                 case 'test_result': {
+                  test_btn.textContent = 'Test';
+                  test_btn.disabled = false;
                   passed[msg.problem][msg.case] = msg.passed;
                   displays[msg.problem][msg.case] = msg.display;
                   if (current_problem === msg.problem) update_cases();
@@ -919,6 +977,8 @@ Deno.serve({ port: 80 }, (req) => {
                   break;
                 }
                 case 'submit_result': {
+                  submit_btn.textContent = 'Submit';
+                  submit_btn.disabled = false;
                   msg.passed.forEach((p, i) => {
                     passed[msg.problem][i] = p;
                     displays[msg.problem][i] = msg.displays[i];
@@ -943,6 +1003,7 @@ Deno.serve({ port: 80 }, (req) => {
               }
             };
             ws.onclose = () => {
+              if (timer_interval) clearInterval(timer_interval);
               time_div.textContent = 'Disconnected...';
               setTimeout(connect, 5000);
             };
@@ -994,7 +1055,7 @@ Deno.serve({ port: 80 }, (req) => {
               }
             } else if (phase === 'ended') {
               over.style.display = 'block';
-              over_h1.textContent = 'The Coder\\'s Arena is finished!';
+              over_h1.textContent = 'The Coder\'s Arena is finished!';
               arena_elements.forEach(el => el.style.display = 'none');
               time_div.textContent = 'Competition Over';
               ws.send(JSON.stringify({ type: 'get_leaderboard' }));
@@ -1086,11 +1147,15 @@ Deno.serve({ port: 80 }, (req) => {
 
           test_btn.onclick = () => {
             if (phase !== 'ongoing' || !accepted) return;
+            test_btn.textContent = 'Loading...';
+            test_btn.disabled = true;
             ws.send(JSON.stringify({ type: 'test', problem: current_problem, case: current_case, code: code.value }));
           };
 
           submit_btn.onclick = () => {
             if (phase !== 'ongoing' || !accepted) return;
+            submit_btn.textContent = 'Loading...';
+            submit_btn.disabled = true;
             ws.send(JSON.stringify({ type: 'submit', problem: current_problem, code: code.value }));
           };
 

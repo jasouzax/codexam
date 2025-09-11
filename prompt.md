@@ -163,3 +163,15 @@ While everything is mostly working, here are some suggested fixes:
 - Spectators not updated when participants gets points, even when `end` time is still ongoing and the score is not updated
 - Also add `spectate` button in `#home` to quickly spectate upcoming competitors
 - Is it possible to color 
+
+### Grok improve #4
+- Please add type to every variable, dont remove it and even add JSDoc comment to object's properties
+- Also add JSDoc or comment processes
+- Also use sometimes `Deno.stdout.write / Deno.stdout.writeSync` instead of console log especially for asking admin so that the "y/n" will not be in new line
+- Use ANSI escape color code `\x1b[` for better CLI interface (red for errors, yellow for asking or user interfearance, etc.)
+- When refreshing the page, the color coding for `#code` is not loaded so there is no colored code untill I start typing
+- The left drag is now working but the textarea overlaps with the right drag which is not unaccessable
+- Put loading in `test` or `submit` button until the host response with the code result
+- When applicant is declined replace `Apply!` button with `Declined, Apply again?`
+- Also remove duration, but default if end time is not specified then there is no end duration
+- Also when disconnected the timer is overwritting the "Disconnecting..."
