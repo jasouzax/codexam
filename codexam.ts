@@ -209,9 +209,9 @@ async function cli_input(): Promise<void> {
     const trimmed = line.trim().toLowerCase();
     if (current_pending) {
       if (trimmed === 'y') {
-        if (participants.has(current_pending.name)) {
+        /*if (participants.has(current_pending.name)) {
           current_pending.ws.send(JSON.stringify({ type: 'declined', msg: 'Name already taken' }));
-        } else {
+        } else {*/
           participants.set(current_pending.name, {
             name: current_pending.name,
             lang: current_pending.lang,
@@ -223,8 +223,8 @@ async function cli_input(): Promise<void> {
           });
           connections.set(current_pending.ws, current_pending.name);
           current_pending.ws.send(JSON.stringify({ type: 'accepted' }));
-        Deno.stdout.writeSync(encoder.encode(`${green}Accepted participant${reset}\n`));
-        }
+          Deno.stdout.writeSync(encoder.encode(`${green}Accepted participant${reset}\n`));
+        //}
         current_pending = null;
         process_next_pending();
       } else if (trimmed === 'n') {
@@ -301,8 +301,16 @@ async function cli_input(): Promise<void> {
   }
 }
 
+function withTimeout<T>(fn: () => Promise<T>, timeout: number, arg: any[] = []) {
+  const timeoutPromise = new Promise<T>((_, reject) =>
+    setTimeout(() => reject(new Error("Timeout exceeded")), timeout)
+  );
+
+  return Promise.race([fn(...(arg as [])), timeoutPromise]);
+}
+
 /** Run code in specified language */
-async function run_code(lang: string, code: string, input: string): Promise<{output: string, error: string}> {
+async function run_code(lang: string, code: string, input: string): Promise<{ output: string, error: string }> {
   let output = '';
   let error = '';
   let temp_dir = '';
@@ -363,24 +371,47 @@ async function run_code(lang: string, code: string, input: string): Promise<{out
         return { output, error };
       }
     }
+
+    console.log('RUNNING', cmd[0]);
     const proc_cmd = new Deno.Command(cmd[0], { args: cmd.slice(1), cwd: temp_dir, stdin: 'piped', stdout: 'piped', stderr: 'piped' });
     const proc = proc_cmd.spawn();
+    let timeout_reached = false;
+
+    const timeout = setTimeout(() => {
+      try {
+        timeout_reached = true;
+        proc.kill('SIGTERM');
+      } catch (e) {}
+    }, 5000);
+
     const writer = proc.stdin.getWriter();
-    await writer.write(encoder.encode(input));
-    await writer.close();
-    const proc_out = await proc.output();
-    if (!proc_out.success) {
+
+    // Fix for Illegal Invocation by using arrow functions to preserve context
+    await withTimeout(() => writer.write(encoder.encode(input)), 5000);
+    await withTimeout(() => writer.close(), 5000);
+
+    const proc_out = await withTimeout(() => proc.output(), 5000);
+
+    clearTimeout(timeout);
+
+    if (timeout_reached) {
+      error = 'Execution exceeded time limit (5 seconds).';
+    } else if (!proc_out.success) {
       error = decoder.decode(proc_out.stderr);
     } else {
       output = decoder.decode(proc_out.stdout);
     }
+
+    console.log('ENDED', cmd[0]);
   } catch (e) {
     if (e instanceof Error) error = e.message;
   } finally {
     if (temp_dir) await Deno.remove(temp_dir, { recursive: true }).catch(() => {});
   }
+
   return { output, error };
 }
+
 
 /** Normalize line endings */
 function normalize(str: string): string {
@@ -1178,7 +1209,7 @@ Deno.serve({ port: 80 }, async (req) => {
             spectate_btn.style.display = phase === 'start' && !accepted ? '' : 'none';
             if (phase === 'start') {
               if (scheduled_start) {
-                time_div.textContent = \`Competition starts at \${new Date(scheduled_start).toLocaleTimeString()}\`;
+                start_timer();
               } else {
                 time_div.textContent = 'Waiting for start';
               }
@@ -1223,9 +1254,9 @@ Deno.serve({ port: 80 }, async (req) => {
           function start_timer() {
             if (timer_interval) clearInterval(timer_interval);
             timer_interval = setInterval(() => {
-              if (time_end) {
+              if (phase == 'start' && scheduled_start || phase == 'ongoing' && time_end) {
                 const now = Date.now();
-                let remaining = time_end - now;
+                let remaining = (phase == 'start' ? scheduled_start : time_end) - now;
                 if (remaining <= 0) {
                   remaining = 0;
                   clearInterval(timer_interval);
@@ -1235,7 +1266,7 @@ Deno.serve({ port: 80 }, async (req) => {
                 const hours = Math.floor(remaining / 3600000);
                 const mins = Math.floor((remaining % 3600000) / 60000);
                 const secs = Math.floor((remaining % 60000) / 1000);
-                time_div.textContent = \`\${hours.toString().padStart(2, '0')}:\${mins.toString().padStart(2, '0')}:\${secs.toString().padStart(2, '0')} left\`;
+                time_div.textContent = \`\${hours.toString().padStart(2, '0')}:\${mins.toString().padStart(2, '0')}:\${secs.toString().padStart(2, '0')} left\${phase == 'start' ? ' to start' : ''}\`;
               } else {
                 time_div.textContent = 'No time limit';
               }
