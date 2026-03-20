@@ -40,7 +40,7 @@ function genMinimalSubarrayLength(): TestCase[] {
     }
     return {
       input: `${arr.length} ${s}\n${arr.join(" ")}\n`,
-      output: minLen === Infinity ? "0" : minLen.toString(),
+      output: `Enter array length and target sum: ${arr.length} ${s}\nEnter array values: ${arr.join(" ")}\nMinimal Subarray Length: ${minLen === Infinity ? "0" : minLen}`,
       points: 2,
     };
   });
@@ -78,9 +78,12 @@ function genDiagonalBalance(): TestCase[] {
         if (nMain === nAnti) { out = `C ${c}`; found = true; }
       }
     }
+    let outStr = `Enter matrix size: ${n}\n`;
+    mat.forEach((r, i) => { outStr += `Enter matrix row ${i + 1}: ${r.join(" ")}\n`; });
+    outStr += `Operation: ${out}`;
     return {
       input: `${n}\n${mat.map(r => r.join(" ")).join("\n")}\n`,
-      output: out,
+      output: outStr,
       points: 3,
     };
   });
@@ -110,7 +113,7 @@ function genSubarraySumConstraint(): TestCase[] {
     }
     return {
       input: `${arr.length} ${s} ${l}\n${arr.join(" ")}\n`,
-      output: count.toString(),
+      output: `Enter array length, target sum, and min length: ${arr.length} ${s} ${l}\nEnter array values: ${arr.join(" ")}\nValid Subarrays: ${count}`,
       points: 2.5,
     };
   });
@@ -137,7 +140,7 @@ function genSlidingWindowTolerance(): TestCase[] {
     }
     return {
       input: `${w} ${t}\n${arr.join(" ")} -1\n`,
-      output: valid.toString(),
+      output: `Enter window size and tolerance: ${w} ${t}\nEnter data stream (end with -1): ${arr.join(" ")} -1\nValid Windows: ${valid}`,
       points: 2,
     };
   });
@@ -157,7 +160,11 @@ function genVowelConsonantBalance(): TestCase[] {
         if (v === c) max = Math.max(max, j - i + 1);
       }
     }
-    return { input: `${str}\n`, output: max.toString(), points: 2.5 };
+    return { 
+      input: `${str}\n`, 
+      output: `Enter string: ${str}\nLongest Balanced Substring Length: ${max}`, 
+      points: 2.5 
+    };
   });
 }
 
@@ -182,7 +189,11 @@ function genConsecutivePlateaus(): TestCase[] {
       if (j - i >= 2) count++;
       i = j;
     }
-    return { input: `${arr.join(" ")} 0\n`, output: count.toString(), points: 1.5 };
+    return { 
+      input: `${arr.join(" ")} 0\n`, 
+      output: `Enter sequence (end with 0): ${arr.join(" ")} 0\nPlateaus Count: ${count}`, 
+      points: 1.5 
+    };
   });
 }
 
@@ -203,7 +214,11 @@ function genEvenMedian(): TestCase[] {
     const sorted = [...arr].sort((a, b) => a - b);
     let m = sorted[Math.floor(sorted.length / 2)];
     let out = m % 2 !== 0 ? m + 1 : m;
-    return { input: `${arr.join(" ")}\n`, output: out.toString(), points: 1.5 };
+    return { 
+      input: `${arr.length}\n${arr.join(" ")}\n`, 
+      output: `Enter array length: ${arr.length}\nEnter array values: ${arr.join(" ")}\nEven Median: ${out}`, 
+      points: 1.5 
+    };
   });
 }
 
@@ -224,7 +239,11 @@ function genFindTheSpy(): TestCase[] {
     const seen = new Set();
     let spy = -1;
     for (const n of arr) { if (seen.has(n)) spy = n; seen.add(n); }
-    return { input: `${arr.join(" ")}\n`, output: spy.toString(), points: 1.5 };
+    return { 
+      input: `${arr.length}\n${arr.join(" ")}\n`, 
+      output: `Enter length of array: ${arr.length}\nValues: ${arr.join(" ")}\nOutput: ${spy}`, 
+      points: 1.5 
+    };
   });
 }
 
@@ -233,7 +252,11 @@ function genStringRotation(): TestCase[] {
   return inputs.map(s => {
     const res = [];
     for (let i = 0; i < s.length; i++) res.push(s.slice(i) + s.slice(0, i));
-    return { input: `${s}\n`, output: res.join(" "), points: 2 };
+    return { 
+      input: `${s}\n`, 
+      output: `Enter string: ${s}\nRotations: ${res.join(" ")}`, 
+      points: 2 
+    };
   });
 }
 
@@ -246,7 +269,11 @@ function genHollowSquare(): TestCase[] {
       for (let i = 0; i < n - 2; i++) out.push("*" + " ".repeat(n - 2) + "*");
       out.push("*".repeat(n));
     }
-    return { input: `${n}\n`, output: out.join("\n"), points: 2 };
+    return { 
+      input: `${n}\n`, 
+      output: `Enter size: ${n}\n${out.join("\n")}`, 
+      points: 2 
+    };
   });
 }
 
@@ -263,7 +290,11 @@ function genBalancedBrackets(): TestCase[] {
       else if (stack.pop() !== pairs[c]) { valid = false; break; }
     }
     if (stack.length > 0) valid = false;
-    return { input: `${s}\n`, output: valid ? "Valid" : "Invalid", points: 2 };
+    return { 
+      input: `${s}\n`, 
+      output: `Enter brackets: ${s}\nStatus: ${valid ? "Valid" : "Invalid"}`, 
+      points: 2 
+    };
   });
 }
 
@@ -286,7 +317,11 @@ function genKadanesPeak(): TestCase[] {
       curr = Math.max(x, curr + x);
       max = Math.max(max, curr);
     }
-    return { input: `${arr.join(" ")}\n`, output: max.toString(), points: 3 };
+    return { 
+      input: `${arr.length}\n${arr.join(" ")}\n`, 
+      output: `Enter array length: ${arr.length}\nEnter array values: ${arr.join(" ")}\nMax Subarray Sum: ${max}`, 
+      points: 3 
+    };
   });
 }
 
@@ -310,7 +345,11 @@ function genTwoSumMatch(): TestCase[] {
         if (arr[i] + arr[j] === t) out = `${arr[i]} ${arr[j]}`;
       }
     }
-    return { input: `${t}\n${arr.join(" ")}\n`, output: out, points: 2 };
+    return { 
+      input: `${t}\n${arr.length}\n${arr.join(" ")}\n`, 
+      output: `Enter target sum: ${t}\nEnter array length: ${arr.length}\nEnter array values: ${arr.join(" ")}\nMatch: ${out}`, 
+      points: 2 
+    };
   });
 }
 
@@ -318,7 +357,11 @@ function genValidPalindrome(): TestCase[] {
   const inputs = ["racecar", "hello", "madam", "level", "world", "radar", "typescript", "civic", "openai", "kayak"];
   return inputs.map(s => {
     const isPal = s === s.split('').reverse().join('');
-    return { input: `${s}\n`, output: isPal ? "True" : "False", points: 1 };
+    return { 
+      input: `${s}\n`, 
+      output: `Enter word: ${s}\nIs Palindrome: ${isPal ? "True" : "False"}`, 
+      points: 1 
+    };
   });
 }
 
@@ -338,7 +381,11 @@ function genAnagramCount(): TestCase[] {
   return inputs.map(s => {
     const groups = new Set();
     for (const word of s.split(" ")) groups.add(word.split('').sort().join(''));
-    return { input: `${s}\n`, output: groups.size.toString(), points: 3 };
+    return { 
+      input: `${s}\n`, 
+      output: `Enter words: ${s}\nAnagram Groups: ${groups.size}`, 
+      points: 3 
+    };
   });
 }
 
@@ -358,7 +405,11 @@ function genIPAddressValidator(): TestCase[] {
         if (n < 0 || n > 255 || p !== n.toString()) { valid = false; break; }
       }
     }
-    return { input: `${ip}\n`, output: valid ? "Valid" : "Invalid", points: 2 };
+    return { 
+      input: `${ip}\n`, 
+      output: `Enter IP address: ${ip}\nStatus: ${valid ? "Valid" : "Invalid"}`, 
+      points: 2 
+    };
   });
 }
 
@@ -380,9 +431,12 @@ function genIslandPerimeter(): TestCase[] {
         }
       }
     }
+    let outStr = `Enter rows and cols: ${grid.length} ${grid[0].length}\n`;
+    grid.forEach((r, i) => { outStr += `Enter grid row ${i + 1}: ${r.join(" ")}\n`; });
+    outStr += `Island Perimeter: ${p}`;
     return {
       input: `${grid.length} ${grid[0].length}\n${grid.map(r => r.join(" ")).join("\n")}\n`,
-      output: p.toString(),
+      output: outStr,
       points: 3,
     };
   });
@@ -404,7 +458,11 @@ function genLIS(): TestCase[] {
         max = Math.max(max, dp[i]);
       }
     }
-    return { input: `${arr.join(" ")}\n`, output: max.toString(), points: 4 };
+    return { 
+      input: `${arr.length}\n${arr.join(" ")}\n`, 
+      output: `Enter array length: ${arr.length}\nEnter array values: ${arr.join(" ")}\nLIS Length: ${max}`, 
+      points: 4 
+    };
   });
 }
 
@@ -419,7 +477,11 @@ function genMissingNumber(): TestCase[] {
     const n = arr.length;
     const expected = (n * (n + 1)) / 2;
     const actual = arr.reduce((a, b) => a + b, 0);
-    return { input: `${arr.join(" ")}\n`, output: (expected - actual).toString(), points: 1 };
+    return { 
+      input: `${arr.length}\n${arr.join(" ")}\n`, 
+      output: `Enter array length: ${arr.length}\nEnter array values: ${arr.join(" ")}\nMissing Number: ${expected - actual}`, 
+      points: 1 
+    };
   });
 }
 
@@ -432,7 +494,11 @@ function genMoveZeroes(): TestCase[] {
   return inputs.map(arr => {
     let res = arr.filter(x => x !== 0);
     while (res.length < arr.length) res.push(0);
-    return { input: `${arr.join(" ")}\n`, output: res.join(" "), points: 2 };
+    return { 
+      input: `${arr.length}\n${arr.join(" ")}\n`, 
+      output: `Enter array length: ${arr.length}\nEnter array values: ${arr.join(" ")}\nResult: ${res.join(" ")}`, 
+      points: 2 
+    };
   });
 }
 
@@ -450,11 +516,13 @@ export const challenges: Challenge[] = [
         A <b>contiguous subarray</b> is a group of consecutive elements taken from the array — elements that are side by side with no gaps.
       </p>
       <h3>Sample #1</h3>
-      <b>Input:</b> (N S on first line, array on second)
+      <b>Input:</b>
       <pre>7 15
 2 3 1 2 4 3 8</pre>
       <b>Output:</b>
-      <pre>3</pre>
+      <pre>Enter array length and target sum: 7 15
+Enter array values: 2 3 1 2 4 3 8
+Minimal Subarray Length: 3</pre>
     `,
     test: genMinimalSubarrayLength(),
   },
@@ -476,7 +544,11 @@ export const challenges: Challenge[] = [
 0 0 0
 1 0 4</pre>
       <b>Output:</b>
-      <pre>R 0</pre>
+      <pre>Enter matrix size: 3
+Enter matrix row 1: 5 0 2
+Enter matrix row 2: 0 0 0
+Enter matrix row 3: 1 0 4
+Operation: R 0</pre>
     `,
     test: genDiagonalBalance(),
   },
@@ -488,11 +560,13 @@ export const challenges: Challenge[] = [
         You are given an array of <code>N</code> non-negative integers, a target sum <code>S</code>, and a minimum length <code>L</code>. Count the number of contiguous subarrays that have a length of at least <code>L</code> and whose sum of elements is less than or equal to <code>S</code>.
       </p>
       <h3>Sample #1</h3>
-      <b>Input:</b> (N S L on first line, array on second)
+      <b>Input:</b>
       <pre>5 7 2
 1 2 3 4 5</pre>
       <b>Output:</b>
-      <pre>4</pre>
+      <pre>Enter array length, target sum, and min length: 5 7 2
+Enter array values: 1 2 3 4 5
+Valid Subarrays: 4</pre>
     `,
     test: genSubarraySumConstraint(),
   },
@@ -511,7 +585,9 @@ export const challenges: Challenge[] = [
       <pre>4 5
 10 12 11 15 16 14 2 -1</pre>
       <b>Output:</b>
-      <pre>3</pre>
+      <pre>Enter window size and tolerance: 4 5
+Enter data stream (end with -1): 10 12 11 15 16 14 2 -1
+Valid Windows: 3</pre>
     `,
     test: genSlidingWindowTolerance(),
   },
@@ -526,7 +602,8 @@ export const challenges: Challenge[] = [
       <b>Input:</b>
       <pre>AEIOUBCDFG</pre>
       <b>Output:</b>
-      <pre>10</pre>
+      <pre>Enter string: AEIOUBCDFG
+Longest Balanced Substring Length: 10</pre>
     `,
     test: genVowelConsonantBalance(),
   },
@@ -541,7 +618,8 @@ export const challenges: Challenge[] = [
       <b>Input:</b>
       <pre>1 2 2 3 3 3 4 5 5 0</pre>
       <b>Output:</b>
-      <pre>3</pre>
+      <pre>Enter sequence (end with 0): 1 2 2 3 3 3 4 5 5 0
+Plateaus Count: 3</pre>
     `,
     test: genConsecutivePlateaus(),
   },
@@ -555,9 +633,12 @@ export const challenges: Challenge[] = [
       <p><i>Note: The median is the middle number in a sorted, ascending or descending, list of numbers.</i></p>
       <h3>Sample #1</h3>
       <b>Input:</b>
-      <pre>4 6 2 8 3 4 1</pre>
+      <pre>7
+4 6 2 8 3 4 1</pre>
       <b>Output:</b>
-      <pre>4</pre>
+      <pre>Enter array length: 7
+Enter array values: 4 6 2 8 3 4 1
+Even Median: 4</pre>
     `,
     test: genEvenMedian(),
   },
@@ -570,9 +651,12 @@ export const challenges: Challenge[] = [
       </p>
       <h3>Sample #1</h3>
       <b>Input:</b>
-      <pre>6 7 2 4 8 3 2</pre>
+      <pre>7
+6 7 2 4 8 3 2</pre>
       <b>Output:</b>
-      <pre>2</pre>
+      <pre>Enter length of array: 7
+Values: 6 7 2 4 8 3 2
+Output: 2</pre>
     `,
     test: genFindTheSpy(),
   },
@@ -587,7 +671,8 @@ export const challenges: Challenge[] = [
       <b>Input:</b>
       <pre>Cpe</pre>
       <b>Output:</b>
-      <pre>Cpe peC eCp</pre>
+      <pre>Enter string: Cpe
+Rotations: Cpe peC eCp</pre>
     `,
     test: genStringRotation(),
   },
@@ -602,7 +687,8 @@ export const challenges: Challenge[] = [
       <b>Input:</b>
       <pre>4</pre>
       <b>Output:</b>
-      <pre>****
+      <pre>Enter size: 4
+****
 * *
 * *
 ****</pre>
@@ -620,7 +706,8 @@ export const challenges: Challenge[] = [
       <b>Input:</b>
       <pre>{[()]}</pre>
       <b>Output:</b>
-      <pre>Valid</pre>
+      <pre>Enter brackets: {[()]}
+Status: Valid</pre>
     `,
     test: genBalancedBrackets(),
   },
@@ -633,9 +720,12 @@ export const challenges: Challenge[] = [
       </p>
       <h3>Sample #1</h3>
       <b>Input:</b>
-      <pre>-2 1 -3 4 -1 2 1 -5 4</pre>
+      <pre>9
+-2 1 -3 4 -1 2 1 -5 4</pre>
       <b>Output:</b>
-      <pre>6</pre>
+      <pre>Enter array length: 9
+Enter array values: -2 1 -3 4 -1 2 1 -5 4
+Max Subarray Sum: 6</pre>
     `,
     test: genKadanesPeak(),
   },
@@ -647,11 +737,15 @@ export const challenges: Challenge[] = [
         You are given a target number and an array of integers. Find the exactly two numbers in the array that add up to the target. Output them in the order they appear, separated by a space.
       </p>
       <h3>Sample #1</h3>
-      <b>Input:</b> (Target on first line, array on second)
+      <b>Input:</b>
       <pre>9
+4
 2 7 11 15</pre>
       <b>Output:</b>
-      <pre>2 7</pre>
+      <pre>Enter target sum: 9
+Enter array length: 4
+Enter array values: 2 7 11 15
+Match: 2 7</pre>
     `,
     test: genTwoSumMatch(),
   },
@@ -666,7 +760,8 @@ export const challenges: Challenge[] = [
       <b>Input:</b>
       <pre>racecar</pre>
       <b>Output:</b>
-      <pre>True</pre>
+      <pre>Enter word: racecar
+Is Palindrome: True</pre>
     `,
     test: genValidPalindrome(),
   },
@@ -681,7 +776,8 @@ export const challenges: Challenge[] = [
       <b>Input:</b>
       <pre>eat tea tan ate nat bat</pre>
       <b>Output:</b>
-      <pre>3</pre>
+      <pre>Enter words: eat tea tan ate nat bat
+Anagram Groups: 3</pre>
       <i>Explanation: The groups are (eat, tea, ate), (tan, nat), and (bat).</i>
     `,
     test: genAnagramCount(),
@@ -697,7 +793,8 @@ export const challenges: Challenge[] = [
       <b>Input:</b>
       <pre>192.168.1.1</pre>
       <b>Output:</b>
-      <pre>Valid</pre>
+      <pre>Enter IP address: 192.168.1.1
+Status: Valid</pre>
     `,
     test: genIPAddressValidator(),
   },
@@ -709,12 +806,15 @@ export const challenges: Challenge[] = [
         You are given a grid representing a map where <code>1</code> represents land and <code>0</code> represents water. Grid cells are connected horizontally and vertically. Calculate the total perimeter of the island.
       </p>
       <h3>Sample #1</h3>
-      <b>Input:</b> (Rows and Cols on first line, then the grid matrix)
+      <b>Input:</b>
       <pre>2 2
 0 1
 1 1</pre>
       <b>Output:</b>
-      <pre>8</pre>
+      <pre>Enter rows and cols: 2 2
+Enter grid row 1: 0 1
+Enter grid row 2: 1 1
+Island Perimeter: 8</pre>
     `,
     test: genIslandPerimeter(),
   },
@@ -727,9 +827,12 @@ export const challenges: Challenge[] = [
       </p>
       <h3>Sample #1</h3>
       <b>Input:</b>
-      <pre>10 9 2 5 3 7 101 18</pre>
+      <pre>8
+10 9 2 5 3 7 101 18</pre>
       <b>Output:</b>
-      <pre>4</pre>
+      <pre>Enter array length: 8
+Enter array values: 10 9 2 5 3 7 101 18
+LIS Length: 4</pre>
       <i>Explanation: The longest increasing subsequence is 2, 3, 7, 101.</i>
     `,
     test: genLIS(),
@@ -742,10 +845,13 @@ export const challenges: Challenge[] = [
         Given an array containing <code>N</code> distinct numbers taken from the range <code>0</code> to <code>N</code>, find the one number that is missing from the array.
       </p>
       <h3>Sample #1</h3>
-      <b>Input:</b> (Array elements space-separated)
-      <pre>3 0 1</pre>
+      <b>Input:</b>
+      <pre>3
+3 0 1</pre>
       <b>Output:</b>
-      <pre>2</pre>
+      <pre>Enter array length: 3
+Enter array values: 3 0 1
+Missing Number: 2</pre>
     `,
     test: genMissingNumber(),
   },
@@ -758,9 +864,12 @@ export const challenges: Challenge[] = [
       </p>
       <h3>Sample #1</h3>
       <b>Input:</b>
-      <pre>0 1 0 3 12</pre>
+      <pre>5
+0 1 0 3 12</pre>
       <b>Output:</b>
-      <pre>1 3 12 0 0</pre>
+      <pre>Enter array length: 5
+Enter array values: 0 1 0 3 12
+Result: 1 3 12 0 0</pre>
     `,
     test: genMoveZeroes(),
   },

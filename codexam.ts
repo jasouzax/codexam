@@ -578,7 +578,7 @@ setInterval(() => {
 }, 1000);
 
 /** Serve the application */
-Deno.serve({ port: 80 }, async (req) => {
+Deno.serve({ port: 8080 }, async (req) => {
   const path = new URL(req.url).pathname.split('/');
   if (req.headers.get('upgrade') === 'websocket') {
     const { socket, response } = Deno.upgradeWebSocket(req);
