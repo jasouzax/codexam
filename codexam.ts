@@ -1006,7 +1006,7 @@ Deno.serve({ port: 80 }, async (req) => {
           make_draggable($('div-r'), false);
 
           function connect() {
-            ws = new WebSocket('ws://' + location.host);
+            ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
             ws.onopen = () => {
               time_div.textContent = 'Connected';
               if (name) ws.send(JSON.stringify({ type: 'reconnect', name }));
