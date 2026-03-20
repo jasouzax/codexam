@@ -45,7 +45,7 @@ interface Challenge {
   test: Array<ChallengeTestCase>;
 }
 // #region Configurations - Developer can modify
-/** Unit of the interface in Pixels */
+/** Unit of the interface in Pixels (Kept for backwards compatibility but design is now relative) */
 const unit: number = 50;
 /** Challenges */
 import { challenges } from './challenges.ts';
@@ -482,7 +482,7 @@ function handle_message(ws: WebSocket, data: string): void {
         const actual = normalize(output || '').trim();
         const exp = normalize(tc.output).trim();
         const passed = !error && actual === exp;
-        const display = error ? `<pre style="margin:0;color:red;">${error}</pre>` : output_html(tc.output, output || '');
+        const display = error ? `<pre style="margin:0;color:#ef4444;">${error}</pre>` : output_html(tc.output, output || '');
         ws.send(JSON.stringify({
           type: 'test_result',
           problem: msg.problem,
@@ -507,7 +507,7 @@ function handle_message(ws: WebSocket, data: string): void {
           const exp = normalize(tc.output).trim();
           const passed = !error && actual === exp;
           passed_arr.push(passed);
-          const display = error ? `<pre style="margin:0;color:red;">${error}</pre>` : output_html(tc.output, output || '');
+          const display = error ? `<pre style="margin:0;color:#ef4444;">${error}</pre>` : output_html(tc.output, output || '');
           displays.push(display);
           if (passed) current_score += tc.points;
         }
@@ -609,11 +609,11 @@ Deno.serve({ port: 80 }, async (req) => {
     }
   }
 
-  const u = unit;
   return new Response(/*html*/`
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
       <head>
+        <meta charset="UTF-8">
         <title>Coder's Arena</title>
         <link rel="stylesheet" href="/hljs/default.min.css">
         <script src="/hljs/highlight.min.js"></script>
@@ -622,306 +622,293 @@ Deno.serve({ port: 80 }, async (req) => {
         <script src="/hljs/cpp.min.js"></script>
         <script src="/hljs/c.min.js"></script>
         <style>
-          :focus {outline:none}
-          html {height:100%; background-color: black; color: white;}
+          :root {
+            --primary: #06b6d4;
+            --primary-hover: #0891b2;
+            --bg-base: #09090b;
+            --bg-panel: #18181b;
+            --border: #27272a;
+            --text-main: #fafafa;
+            --text-muted: #a1a1aa;
+            --success: #10b981;
+            --danger: #ef4444;
+            --pending: #eab308;
+            
+            --left-fr: 1;
+            --code-fr: 2;
+            --result-fr: 1;
+          }
+
+          * { box-sizing: border-box; }
+          :focus { outline: 2px solid var(--primary); outline-offset: -2px; }
+          
+          ::-webkit-scrollbar { width: 8px; height: 8px; }
+          ::-webkit-scrollbar-track { background: var(--bg-base); }
+          ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+          ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+          html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            overflow: hidden;
+          }
+
           body {
             display: grid;
-            height: calc(100% - ${0.2 * u}px);
-            grid-template: ${0.75 * u}px ${u}px auto ${0.5 * u}px ${0.5 * u}px / 1fr ${0.2 * u}px 2fr ${0.2 * u}px 1fr;
-            margin: 0;
-            padding: ${0.1 * u}px;
-            background-color: black;
-            color: white;
-            font-family: Arial, sans-serif;
+            grid-template-rows: 60px 48px minmax(0, 1fr) 40px 40px;
+            /* Columns manipulated by JS drag */
+            grid-template-columns: var(--left-fr)fr 4px var(--code-fr)fr 4px var(--result-fr)fr;
           }
-          #div-l {grid-area:3/2; cursor: col-resize;}
-          #div-r {grid-area:3/4; cursor: col-resize;}
-          #div-l,#div-r {
-            z-index: 2;
-            background-color: #111;
-          }
+
           #title {
-            grid-area:1/1/span 1/span 5;
-            text-align: center;
-            font-size: ${0.6 * u}px;
-            color: red;
-            font-weight: bold;
+            grid-column: 1 / -1; grid-row: 1;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.25rem; font-weight: 700;
+            color: var(--primary);
+            border-bottom: 1px solid var(--border);
+            background-color: var(--bg-base);
           }
+
           #tabs {
-            display: flex;
-            grid-area:2/1/span 1/span 5;
+            grid-column: 1 / -1; grid-row: 2;
+            display: flex; overflow-x: auto; flex-wrap: nowrap;
+            background-color: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            padding: 0 1rem; gap: 0.5rem; align-items: center;
           }
           #tabs button {
-            flex-grow: 1;
-            background-color: red;
-            color: white;
-            border: none;
-            font-size: ${0.3 * u}px;
-            cursor: pointer;
+            flex: 0 0 auto;
+            background: transparent; color: var(--text-muted);
+            border: none; padding: 0.35rem 0.75rem;
+            font-size: 0.875rem; font-weight: 500;
+            cursor: pointer; border-radius: 6px;
+            transition: all 0.2s; white-space: nowrap;
           }
-          #tabs button:first-child { border-top-left-radius: ${0.2*u}px}
-          #tabs button:last-child { border-top-right-radius: ${0.2*u}px}
-          #tabs button:hover {
-            background-color: #cc0000;
+          #tabs button.active, #tabs button:hover {
+            background-color: var(--border); color: var(--primary);
           }
+
           #info {
-            grid-area:3/1;
-            background-color: #222;
-            padding: ${0.2 * u}px;
-            overflow: auto;
+            grid-column: 1; grid-row: 3;
+            background-color: var(--bg-panel);
+            padding: 1rem; overflow-y: auto;
+            line-height: 1.6; color: var(--text-main);
           }
           #info code, #info pre {
-            background-color: #333;
-            border: ${0.02 * u}px solid #444;
-            border-radius: ${0.05 * u}px;
-            padding: 0 ${0.05*u}px;
-            font-family: Courier;
+            background-color: var(--bg-base);
+            border: 1px solid var(--border); border-radius: 6px;
+            padding: 0.2rem 0.4rem; font-family: ui-monospace, monospace; font-size: 0.875rem;
           }
+
+          #div-l { grid-column: 2; grid-row: 3; cursor: col-resize; background-color: var(--border); transition: background-color 0.2s; z-index: 10; }
+          #div-r { grid-column: 4; grid-row: 3; cursor: col-resize; background-color: var(--border); transition: background-color 0.2s; z-index: 10; }
+          #div-l:hover, #div-r:hover { background-color: var(--primary); }
+
           #code-wrapper {
-            grid-area:3/3;
-            position: relative;
-            background-color: #333;
+            grid-column: 3; grid-row: 3;
+            position: relative; background-color: var(--bg-panel);
+          }
+          #code, #code-highlight {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 14px; line-height: 1.5; padding: 1rem; margin: 0;
+            box-sizing: border-box; border: none; white-space: pre-wrap; word-wrap: break-word;
           }
           #code {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: calc(100% - ${0.4*u}px);
-            height: calc(100% - ${0.4*u}px);
-            font: ${0.3 * u}px monospace;
-            line-height: ${0.375 * u}px;
-            color: transparent;
-            background: transparent;
-            caret-color: white;
-            border: none;
-            padding: ${0.2 * u}px;
-            resize: none;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            overflow: auto;
-            z-index: 1;
+            color: transparent; background: transparent;
+            caret-color: var(--primary); resize: none; z-index: 1; outline: none; overflow: auto;
           }
           #code-highlight {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: calc(100% - ${0.4*u}px);
-            height: calc(100% - ${0.4*u}px);
-            font: ${0.3 * u}px 'Courier New', monospace;
-            padding: ${0.2 * u}px;
-            pointer-events: none;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            overflow: hidden;
-            margin: 0;
-            z-index: 0;
+            color: #e4e4e7; z-index: 0; pointer-events: none; overflow: hidden;
           }
+
           #result {
-            display: grid;
-            grid-template: ${1.2*u}px auto ${u}px / 1fr;
-            grid-area:3/5;
-            background-color: #222;
-            padding: ${0.2 * u}px;
+            grid-column: 5; grid-row: 3;
+            display: flex; flex-direction: column;
+            background-color: var(--bg-panel);
+            overflow: hidden;
           }
           #cases {
-            display: flex;
+            flex: 0 0 auto; display: flex; overflow-x: auto; flex-wrap: nowrap;
+            padding: 0.75rem; gap: 0.5rem;
+            background-color: var(--bg-base); border-bottom: 1px solid var(--border);
           }
           #cases button {
-            height: 100%;
-            background-color: #555;
-            color: white;
-            border: none;
-            cursor: pointer;
-            margin: 0;
-            flex-grow: 1;
-            font-weight: bold;
-            font-size: ${0.4*u}px;
+            flex: 0 0 auto; display: flex; align-items: center; gap: 0.5rem;
+            background-color: var(--border); color: var(--text-muted);
+            border: 1px solid transparent; border-radius: 6px;
+            padding: 0.4rem 0.75rem; cursor: pointer; font-weight: 500;
+            transition: all 0.2s; font-size: 0.875rem;
           }
           #cases button::before {
-            content: '?';
-            display: block;
-            background-color: #aa0;
-            aspect-ratio: 1/1;
-            width: ${0.4*u}px;
-            line-height: ${0.4*u}px;
-            border-radius: 50%;
-            font-weight: bold;
-            margin: 0 auto;
-            font-size: ${0.3*u}px;
-            margin-bottom: ${0.1*u}px;
+            content: ''; display: inline-block; width: 8px; height: 8px;
+            border-radius: 50%; background-color: var(--pending);
           }
-          #cases button:first-child { border-top-left-radius: ${0.2*u}px}
-          #cases button:last-child { border-top-right-radius: ${0.2*u}px}
-          #cases button:not(:first-child) { border-left: ${0.05*u}px solid #444 }
-          #cases button.passed::before {
-            content: '\\2713';
-            background-color: #0a0;
-          }
-          #cases button.failed::before {
-            content: '\\2A09';
-            background-color: #a00;
-          }
+          #cases button.passed::before { background-color: var(--success); }
+          #cases button.failed::before { background-color: var(--danger); }
           #cases button.focus {
-            background-color: #111;
+            background-color: var(--bg-base); color: var(--text-main); border-color: var(--primary);
           }
+
           #match {
-            overflow: auto;
-            padding: ${0.1 * u}px;
-            background-color: #111;
+            flex: 1 1 auto; overflow: auto; padding: 1rem;
+            font-family: ui-monospace, monospace; font-size: 13px;
           }
           .diff-error {
-            background-color: red;
-            color: white;
+            background-color: rgba(239, 68, 68, 0.15); color: var(--danger); border-radius: 2px;
           }
+
           #action {
-            display: flex;
+            flex: 0 0 auto; display: flex; gap: 0.5rem; padding: 0.75rem;
+            background-color: var(--bg-base); border-top: 1px solid var(--border);
           }
           #action button {
-            background-color: red;
-            color: white;
-            border: none;
-            padding: ${0.2 * u}px;
-            cursor: pointer;
-            flex-grow: 1;
+            flex: 1; background-color: var(--border); color: var(--text-main);
+            border: 1px solid #3f3f46; border-radius: 6px;
+            padding: 0.5rem; font-weight: 500; cursor: pointer; transition: 0.2s;
           }
-          #action button:hover {
-            background-color: #cc0000;
+          #action button:hover { background-color: #3f3f46; }
+          #action button#submit-btn {
+            background-color: var(--primary); color: var(--bg-base); border-color: var(--primary);
           }
-          #action button:first-child { border-bottom-left-radius: ${0.2*u}px}
-          #action button:last-child { border-bottom-right-radius: ${0.2*u}px}
-          #time {
-            grid-area:5/1/span 1/span 5;
-            text-align: center;
-            font-size: ${0.4 * u}px;
-            color: white;
-          }
-          #score {
-            grid-area:4/1/span 1/span 5;
-            text-align: center;
-            font-size: ${0.4 * u}px;
-            color: white;
-          }
-          #home, #over, #wait {
-            grid-area: 2/1/span 3/span 5;
-            background-color: black;
-            padding: ${u}px;
-            text-align: center;
-            display: none;
-          }
-          #home input, #home select {
-            background-color: #333;
-            color: white;
-            border: 1px solid #555;
-            padding: ${0.1 * u}px;
-            margin: ${0.1 * u}px;
-          }
-          #home button, #wait button, #refresh-lb, #back-arena-btn {
-            background-color: red;
-            color: white;
-            border: none;
-            padding: ${0.2 * u}px ${0.4 * u}px;
-            cursor: pointer;
-            margin-top: ${0.2 * u}px;
-          }
-          #over table {
-            width: 80%;
-            margin: 0 auto;
-            border-collapse: collapse;
-          }
-          #over th, #over td {
-            border: 1px solid #555;
-            padding: ${0.1 * u}px;
-            text-align: left;
-          }
-          #over th {
-            background-color: red;
-            color: white;
-          }
-          #over h3 {
-            color: red;
-          }
-          #waiting-text { display: none; }
+          #action button#submit-btn:hover { background-color: var(--primary-hover); }
 
-          /* Syntax Highlighting overrides omitted for brevity... (Kept original rules in place) */
-            .hljs-keyword, .hljs-built_in, .hljs-literal, .hljs-variable.language, .hljs-meta.keyword { color: #c678dd; }
-            .hljs-string, .hljs-meta.string, .hljs-regexp, .hljs-char.escape, .hljs-template-variable { color: #98c379; }
-            .hljs-number, .hljs-variable.constant, .hljs-symbol, .hljs-bullet { color: #d19a66; }
-            .hljs-function, .hljs-title.function, .hljs-title.function.invoke, .hljs-title { color: #61afef; }
-            .hljs-operator, .hljs-punctuation, .hljs-subst { color: #56b6c2; }
-            .hljs-comment, .hljs-quote, .hljs-doctag { color: #9ca3af; font-style: italic; }
-            .hljs-type, .hljs-class, .hljs-title.class, .hljs-title.class.inherited { color: #e5c07b; }
-            .hljs-property, .hljs-attr, .hljs-attribute, .hljs-name, .hljs-section, .hljs-tag, .hljs-selector-tag, .hljs-selector-id, .hljs-selector-class, .hljs-selector-attr, .hljs-selector-pseudo { color: #e5c07b; }
-            .hljs-meta, .hljs-meta.prompt { color: #61afef; }
-            .hljs-code { color: #abb2bf; } .hljs-emphasis { font-style: italic; } .hljs-strong { font-weight: bold; } .hljs-formula { color: #98c379; } .hljs-link { color: #61afef; text-decoration: underline; }
-            .hljs-template-tag { color: #c678dd; } .hljs-addition { color: #98c379; background: rgba(152, 195, 121, 0.15); } .hljs-deletion { color: #e06c75; background: rgba(224, 108, 117, 0.15); }
+          #score {
+            grid-column: 1 / -1; grid-row: 4;
+            display: flex; align-items: center; justify-content: center;
+            background-color: var(--bg-base); border-top: 1px solid var(--border);
+            font-size: 0.875rem; color: var(--text-muted); font-weight: 500;
+          }
+          #time {
+            grid-column: 1 / -1; grid-row: 5;
+            display: flex; align-items: center; justify-content: center;
+            background-color: var(--border); color: var(--primary);
+            font-weight: 600; font-size: 1rem; letter-spacing: 0.5px;
+          }
+
+          /* Modal / Overlays */
+          #home, #over, #wait {
+            position: fixed; inset: 0; z-index: 50;
+            background: rgba(9, 9, 11, 0.85); backdrop-filter: blur(4px);
+            display: none; align-items: center; justify-content: center; padding: 1rem;
+          }
+          .modal-content {
+            background: var(--bg-panel); border: 1px solid var(--border);
+            border-radius: 12px; padding: 2.5rem; width: 100%; max-width: 500px;
+            text-align: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            max-height: 90vh; overflow-y: auto;
+          }
+          .modal-content h1 { color: var(--primary); font-size: 1.5rem; margin-top: 0; }
+          .modal-content p { color: var(--text-muted); margin-bottom: 0.5rem; font-size: 0.875rem; text-align: left;}
+          .modal-content input, .modal-content select {
+            width: 100%; background-color: var(--bg-base); color: var(--text-main);
+            border: 1px solid var(--border); padding: 0.6rem; border-radius: 6px;
+            margin-bottom: 1.25rem; font-size: 1rem;
+          }
+          .modal-content button {
+            width: 100%; background-color: var(--primary); color: var(--bg-base);
+            border: none; padding: 0.6rem; border-radius: 6px; cursor: pointer;
+            font-weight: 600; font-size: 1rem; margin-top: 0.5rem; transition: 0.2s;
+          }
+          .modal-content button:hover { background-color: var(--primary-hover); }
+          .modal-content button.secondary {
+            background-color: var(--border); color: var(--text-main); margin-top: 0.75rem;
+          }
+          .modal-content button.secondary:hover { background-color: #3f3f46; }
+          
+          #over .modal-content { max-width: 700px; }
+          #over table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.875rem; }
+          #over th, #over td { border-bottom: 1px solid var(--border); padding: 0.75rem; text-align: left; }
+          #over th { color: var(--primary); font-weight: 600; }
+          #over h3 { color: var(--text-main); text-align: left; margin: 1.5rem 0 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+          #waiting-text { display: none; color: var(--success) !important; text-align: center !important; margin: 1rem 0; font-weight: 500; }
+
+          /* Syntax Highlighting overrides */
+          .hljs-keyword, .hljs-built_in, .hljs-literal, .hljs-variable.language, .hljs-meta.keyword { color: #c678dd; }
+          .hljs-string, .hljs-meta.string, .hljs-regexp, .hljs-char.escape, .hljs-template-variable { color: #98c379; }
+          .hljs-number, .hljs-variable.constant, .hljs-symbol, .hljs-bullet { color: #d19a66; }
+          .hljs-function, .hljs-title.function, .hljs-title.function.invoke, .hljs-title { color: #61afef; }
+          .hljs-operator, .hljs-punctuation, .hljs-subst { color: #56b6c2; }
+          .hljs-comment, .hljs-quote, .hljs-doctag { color: #9ca3af; font-style: italic; }
+          .hljs-type, .hljs-class, .hljs-title.class, .hljs-title.class.inherited { color: #e5c07b; }
+          .hljs-property, .hljs-attr, .hljs-attribute, .hljs-name, .hljs-section, .hljs-tag, .hljs-selector-tag, .hljs-selector-id, .hljs-selector-class, .hljs-selector-attr, .hljs-selector-pseudo { color: #e5c07b; }
+          .hljs-meta, .hljs-meta.prompt { color: #61afef; }
+          .hljs-code { color: #abb2bf; } .hljs-emphasis { font-style: italic; } .hljs-strong { font-weight: bold; } .hljs-formula { color: #98c379; } .hljs-link { color: #61afef; text-decoration: underline; }
+          .hljs-template-tag { color: #c678dd; } .hljs-addition { color: #98c379; background: rgba(152, 195, 121, 0.15); } .hljs-deletion { color: #e06c75; background: rgba(224, 108, 117, 0.15); }
         </style>
       </head>
       <body>
         <div id="title">Coder's Arena</div>
-        <div id="div-l"></div>
-        <div id="div-r"></div>
         <div id="tabs"></div>
         <div id="info"></div>
+        <div id="div-l"></div>
         <div id="code-wrapper">
           <textarea id="code" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea>
           <pre id="code-highlight"><code></code></pre>
         </div>
+        <div id="div-r"></div>
         <div id="result">
           <div id="cases"></div>
           <div id="match"></div>
           <div id="action">
             <button id="test-btn">Test</button>
             <button id="submit-btn">Submit</button>
-            <button id="lb-btn" style="display:none; background-color: #555;">Rankings</button>
+            <button id="lb-btn" style="display:none;">Rankings</button>
             <button id="finish-btn">Finish</button>
           </div>
         </div>
         <div id="score">Total Current Score: 0 / ${total_points}</div>
         <div id="time">Waiting for start</div>
+        
         <div id="home">
-          <h1 style="color: red;">Welcome to Coder's Arena 2025!</h1>
-          <p>Enter Name:</p>
-          <input id="name-input" placeholder="Participant's Name"></input>
-          <p>Select Language:</p>
-          <select id="lang-select">
-            <option>Python</option>
-            <option>Java</option>
-            <option>C++</option>
-            <option>C</option>
-          </select>
-          <br>
-          <button id="apply-btn">Apply!</button>
-          <p id="waiting-text">Okay, you're registered! Wait for the competition to start.</p>
-          <button id="spectate-btn">Spectate</button>
+          <div class="modal-content">
+            <h1>Welcome to Coder's Arena 2025!</h1>
+            <p>Participant's Name</p>
+            <input id="name-input" placeholder="Enter Name..." autocomplete="off"></input>
+            <p>Select Language</p>
+            <select id="lang-select">
+              <option>Python</option>
+              <option>Java</option>
+              <option>C++</option>
+              <option>C</option>
+            </select>
+            <button id="apply-btn">Apply!</button>
+            <p id="waiting-text">Registration successful! Waiting for the competition to start...</p>
+            <button id="spectate-btn" class="secondary">Spectate Rankings</button>
+          </div>
         </div>
+        
         <div id="wait">
-          <h1 style="color: red;">You submitted, wait for competition to end</h1>
-          <button id="go-back-btn">Go back</button>
+          <div class="modal-content">
+            <h1>Submission Complete</h1>
+            <p style="text-align:center;">You have submitted your code. Please wait for the competition to officially end.</p>
+            <button id="go-back-btn" class="secondary">Go Back to Editor</button>
+          </div>
         </div>
+        
         <div id="over">
-          <h1 id="over-h1" style="color: red;">The Coder's Arena is finished!</h1>
-          <p>Here are the winners!</p>
-          <h3>Python</h3>
-          <table id="lb-python">
-            <tr><th>Name</th><th>Points</th></tr>
-          </table>
-          <h3>Java</h3>
-          <table id="lb-java">
-            <tr><th>Name</th><th>Points</th></tr>
-          </table>
-          <h3>C++</h3>
-          <table id="lb-cpp">
-            <tr><th>Name</th><th>Points</th></tr>
-          </table>
-          <h3>C</h3>
-          <table id="lb-c">
-            <tr><th>Name</th><th>Points</th></tr>
-          </table>
-          <button id="refresh-lb">Refresh Leaderboard</button>
-          <button id="back-arena-btn" style="display:none; background-color: #555;">Back to Arena</button>
+          <div class="modal-content">
+            <h1 id="over-h1">The Coder's Arena is finished!</h1>
+            <p style="text-align:center; margin-bottom: 1.5rem;">Here are the final rankings.</p>
+            <h3>Python</h3>
+            <table id="lb-python"><tr><th>Name</th><th>Points</th></tr></table>
+            <h3>Java</h3>
+            <table id="lb-java"><tr><th>Name</th><th>Points</th></tr></table>
+            <h3>C++</h3>
+            <table id="lb-cpp"><tr><th>Name</th><th>Points</th></tr></table>
+            <h3>C</h3>
+            <table id="lb-c"><tr><th>Name</th><th>Points</th></tr></table>
+            <button id="refresh-lb">Refresh Leaderboard</button>
+            <button id="back-arena-btn" class="secondary" style="display:none;">Back to Arena</button>
+          </div>
         </div>
+        
         <script>
-          const unit = ${unit}; const challenges = ${client_challenges.toString()};
+          const challenges = ${client_challenges.toString()};
           let ws;
           let current_problem = 0;
           let current_case = 0;
@@ -966,12 +953,11 @@ Deno.serve({ port: 80 }, async (req) => {
           const match = $('match');
           const cases_div = $('cases');
           const tabs = $('tabs');
-          const arena_elements = [tabs, info, $('code-wrapper'), $('result'), $('div-l'), $('div-r')];
 
           let left_fr = 1, code_fr = 2, result_fr = 1;
           const body = document.body;
           function update_grid() {
-            body.style.gridTemplateColumns = \`\${left_fr}fr \${0.2 * unit}px \${code_fr}fr \${0.2 * unit}px \${result_fr}fr\`;
+            body.style.gridTemplateColumns = \`\${left_fr}fr 4px \${code_fr}fr 4px \${result_fr}fr\`;
           }
           update_grid();
 
@@ -982,7 +968,7 @@ Deno.serve({ port: 80 }, async (req) => {
               const start_left = left_fr;
               const start_code = code_fr;
               const start_result = result_fr;
-              const container_width = body.getBoundingClientRect().width - 2 * (0.2 * unit); 
+              const container_width = body.getBoundingClientRect().width - 8; 
               const total_fr = left_fr + code_fr + result_fr;
               const pixel_per_fr = container_width / total_fr;
               function move(e) {
@@ -1102,9 +1088,8 @@ Deno.serve({ port: 80 }, async (req) => {
             home.style.display = 'none';
             wait.style.display = 'none';
             over.style.display = 'none';
-            score.style.display = 'none';
-            arena_elements.forEach(el => el.style.display = '');
-            spectate_btn.style.display = phase === 'start' && !accepted ? '' : 'none';
+            
+            spectate_btn.style.display = phase === 'start' && !accepted ? 'block' : 'none';
             lb_btn.style.display = is_practice ? 'block' : 'none';
 
             if (is_practice) {
@@ -1119,47 +1104,42 @@ Deno.serve({ port: 80 }, async (req) => {
                 time_div.textContent = 'Waiting for start';
               }
               if (accepted) {
-                home.style.display = 'block';
+                home.style.display = 'flex';
                 name_input.style.display = 'none';
+                name_input.previousElementSibling.style.display = 'none';
                 lang_select.style.display = 'none';
+                lang_select.previousElementSibling.style.display = 'none';
                 apply_btn.style.display = 'none';
                 waiting_text.style.display = 'block';
-                arena_elements.forEach(el => el.style.display = 'none');
               } else {
-                home.style.display = 'block';
+                home.style.display = 'flex';
                 name_input.style.display = '';
+                name_input.previousElementSibling.style.display = '';
                 lang_select.style.display = '';
+                lang_select.previousElementSibling.style.display = '';
                 apply_btn.style.display = '';
                 waiting_text.style.display = 'none';
-                arena_elements.forEach(el => el.style.display = 'none');
               }
             } else if (phase === 'ongoing') {
               if (!is_practice) start_timer();
-              if (accepted) {
-                home.style.display = 'none';
-                score.style.display = '';
-              } else {
-                // If it's Practice, and not accepted, they can register, so let home show.
+              if (!accepted) {
                 if (is_practice) {
-                  home.style.display = 'block';
+                  home.style.display = 'flex';
                   name_input.style.display = '';
                   lang_select.style.display = '';
                   apply_btn.style.display = '';
-                  spectate_btn.style.display = '';
-                  arena_elements.forEach(el => el.style.display = 'none');
+                  spectate_btn.style.display = 'block';
                 } else {
-                  over.style.display = 'block';
+                  over.style.display = 'flex';
                   over_h1.textContent = 'Competition Ongoing';
-                  arena_elements.forEach(el => el.style.display = 'none');
                   ws.send(JSON.stringify({ type: 'get_leaderboard' }));
                   if (poll_interval) clearInterval(poll_interval);
                   poll_interval = setInterval(() => ws.send(JSON.stringify({ type: 'get_leaderboard' })), 10000);
                 }
               }
             } else if (phase === 'ended') {
-              over.style.display = 'block';
+              over.style.display = 'flex';
               over_h1.textContent = 'The Coder\\'s Arena is finished!';
-              arena_elements.forEach(el => el.style.display = 'none');
               time_div.textContent = 'Competition Over';
               ws.send(JSON.stringify({ type: 'get_leaderboard' }));
               if (poll_interval) clearInterval(poll_interval);
@@ -1199,14 +1179,14 @@ Deno.serve({ port: 80 }, async (req) => {
             update_highlight();
             update_cases();
             update_match();
-            tabs.querySelectorAll('button').forEach((b, i) => b.style.backgroundColor = i === index ? '#990000' : 'red');
+            tabs.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === index));
           }
 
           function update_cases() {
             cases_div.innerHTML = '';
             for (let i = 0; i < challenges[current_problem].num_testcases; i++) {
               const btn = document.createElement('button');
-              btn.textContent = i.toString().padStart(2, '0');
+              btn.textContent = 'Test ' + i.toString().padStart(2, '0');
               if (passed[current_problem][i] === true) btn.classList.add('passed');
               else if (passed[current_problem][i] === false) btn.classList.add('failed');
               if (current_case == i) btn.classList.add('focus');
@@ -1253,7 +1233,7 @@ Deno.serve({ port: 80 }, async (req) => {
           };
 
           spectate_btn.onclick = () => {
-            over.style.display = 'block';
+            over.style.display = 'flex';
             over_h1.textContent = is_practice ? 'Practice Rankings' : 'Competition Not Started Yet';
             home.style.display = 'none';
             ws.send(JSON.stringify({ type: 'get_leaderboard' }));
@@ -1274,31 +1254,23 @@ Deno.serve({ port: 80 }, async (req) => {
           };
 
           lb_btn.onclick = () => {
-            arena_elements.forEach(el => el.style.display = 'none');
-            score.style.display = 'none';
-            over.style.display = 'block';
+            over.style.display = 'flex';
             over_h1.textContent = 'Practice Rankings';
             back_arena_btn.style.display = 'inline-block';
             ws.send(JSON.stringify({ type: 'get_leaderboard' }));
           };
 
           finish_btn.onclick = () => {
-            wait.style.display = 'block';
-            arena_elements.forEach(el => el.style.display = 'none');
-            score.style.display = 'none';
+            wait.style.display = 'flex';
           };
 
           go_back_btn.onclick = () => {
             wait.style.display = 'none';
-            arena_elements.forEach(el => el.style.display = '');
-            if (phase === 'ongoing' && accepted) score.style.display = '';
           };
           
           back_arena_btn.onclick = () => {
             over.style.display = 'none';
             back_arena_btn.style.display = 'none';
-            arena_elements.forEach(el => el.style.display = '');
-            score.style.display = '';
           };
 
           refresh_lb.onclick = () => {
