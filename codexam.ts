@@ -392,6 +392,44 @@ function normalize(str: string): string {
   return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
+/** Simulate terminal echoing of input stream into output stream to emulate a PTY */
+function simulate_terminal_echo(actual: string, input: string, expected: string): string {
+  let act_idx = 0;
+  let inp_idx = 0;
+  let sim = "";
+  let exp_idx = 0;
+
+  actual = normalize(actual);
+  input = normalize(input);
+  expected = normalize(expected);
+
+  while (act_idx < actual.length || inp_idx < input.length) {
+    if (exp_idx < expected.length) {
+      if (act_idx < actual.length && actual[act_idx] === expected[exp_idx]) {
+        sim += actual[act_idx];
+        act_idx++;
+        exp_idx++;
+        continue;
+      }
+      if (inp_idx < input.length && input[inp_idx] === expected[exp_idx]) {
+        sim += input[inp_idx];
+        inp_idx++;
+        exp_idx++;
+        continue;
+      }
+    }
+    // If neither matches the blueprint, flush remaining actual then input
+    if (act_idx < actual.length) {
+      sim += actual[act_idx];
+      act_idx++;
+    } else if (inp_idx < input.length) {
+      sim += input[inp_idx];
+      inp_idx++;
+    }
+  }
+  return sim;
+}
+
 /** Generate HTML for output display with differences highlighted */
 function output_html(expected: string, actual: string): string {
   const exp_norm = normalize(expected);
@@ -479,10 +517,19 @@ function handle_message(ws: WebSocket, data: string): void {
         const ch = challenges[msg.problem];
         const tc = ch.test[msg.case];
         const { output, error } = await run_code(p.lang, msg.code, tc.input);
-        const actual = normalize(output || '').trim();
+        
+        const actual_raw = output || '';
         const exp = normalize(tc.output).trim();
-        const passed = !error && actual === exp;
-        const display = error ? `<pre style="margin:0;color:#ef4444;">${error}</pre>` : output_html(tc.output, output || '');
+        
+        let actual_sim = actual_raw;
+        // Run simulation interceptor if output doesn't match directly
+        if (normalize(actual_raw).trim() !== exp) {
+          actual_sim = simulate_terminal_echo(actual_raw, tc.input, tc.output);
+        }
+        
+        const actual_final = normalize(actual_sim).trim();
+        const passed = !error && actual_final === exp;
+        const display = error ? `<pre style="margin:0;color:#ef4444;">${error}</pre>` : output_html(exp, actual_final);
         ws.send(JSON.stringify({
           type: 'test_result',
           problem: msg.problem,
@@ -503,11 +550,20 @@ function handle_message(ws: WebSocket, data: string): void {
         let current_score = 0;
         for (const tc of ch.test) {
           const { output, error } = await run_code(p.lang, msg.code, tc.input);
-          const actual = normalize(output || '').trim();
+          
+          const actual_raw = output || '';
           const exp = normalize(tc.output).trim();
-          const passed = !error && actual === exp;
+          
+          let actual_sim = actual_raw;
+          if (normalize(actual_raw).trim() !== exp) {
+            actual_sim = simulate_terminal_echo(actual_raw, tc.input, tc.output);
+          }
+          
+          const actual_final = normalize(actual_sim).trim();
+          const passed = !error && actual_final === exp;
           passed_arr.push(passed);
-          const display = error ? `<pre style="margin:0;color:#ef4444;">${error}</pre>` : output_html(tc.output, output || '');
+          
+          const display = error ? `<pre style="margin:0;color:#ef4444;">${error}</pre>` : output_html(exp, actual_final);
           displays.push(display);
           if (passed) current_score += tc.points;
         }
